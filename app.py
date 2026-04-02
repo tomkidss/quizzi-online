@@ -63,7 +63,7 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("QUIZ_SECRET_KEY", "quizzi-secret-key-default-v9-4")
 
 # eventlet recommended (requirements has eventlet)
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
+socketio = SocketIO(app, cors_allowed_origins="*")
 
 # ===== Admin login (Control security) =====
 ADMIN_USERNAME = os.environ.get("QUIZ_ADMIN_USER", "admin")
