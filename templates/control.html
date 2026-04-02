@@ -120,11 +120,11 @@
               </div>
 
               <div class="mt-2 small">
-                Link người chơi (LAN): <b class="text-light">http://{{ lan_ip }}:5000/player_join?room=<span
+                Link người chơi (LAN): <b class="text-light">{{ request.url_root.replace("http://", "https://") if "onrender" in request.url_root else request.url_root }}player_join?room=<span
                     id="roomCodeInline">ROOM</span></b><br />
-                Link Display Gate (LAN): <b class="text-light">http://{{ lan_ip }}:5000/display_gate?room=<span
+                Link Display Gate (LAN): <b class="text-light">{{ request.url_root.replace("http://", "https://") if "onrender" in request.url_root else request.url_root }}display_gate?room=<span
                     id="roomCodeInline2">ROOM</span></b><br />
-                Link MC Gate (LAN): <b class="text-light">http://{{ lan_ip }}:5000/mc_gate?room=<span
+                Link MC Gate (LAN): <b class="text-light">{{ request.url_root.replace("http://", "https://") if "onrender" in request.url_root else request.url_root }}mc_gate?room=<span
                     id="roomCodeInline3">ROOM</span></b><br />
                 <span class="text-bright-hint">Mở Display bằng IP LAN (không mở localhost) để QR quét được.</span>
               </div>

@@ -1480,7 +1480,7 @@ def api_delete_question(room_code):
 def qr(room_code):
     room_code = room_code.strip().upper()
     ip = get_lan_ip()
-    url = f"http://{ip}:5000/player_join?room={room_code}"
+    url = f"{request.url_root.replace('http://', 'https://' if 'onrender.com' in request.url_root else 'http://')}player_join?room={room_code}"
     img = qrcode.make(url)
     bio = io.BytesIO()
     img.save(bio, format="PNG")
@@ -1492,7 +1492,7 @@ def qr(room_code):
 def mc_qr(room_code):
     room_code = room_code.strip().upper()
     ip = get_lan_ip()
-    url = f"http://{ip}:5000/mc_gate?room={room_code}"
+    url = f"{request.url_root.replace('http://', 'https://' if 'onrender.com' in request.url_root else 'http://')}mc_gate?room={room_code}"
     img = qrcode.make(url)
     bio = io.BytesIO()
     img.save(bio, format="PNG")
