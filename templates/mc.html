@@ -1,0 +1,547 @@
+<!doctype html>
+<html lang="vi">
+
+<head>
+  <meta charset="utf-8" />
+  <title>Quiz MC</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+</head>
+
+<body class="bg-dark text-light">
+  <div class="container py-4">
+
+    <div class="d-flex align-items-start justify-content-between gap-3 flex-wrap">
+      <div>
+        <h2 class="mb-1">MC (Realtime)</h2>
+        <div class="text-bright-hint small">Theo dõi tiến trình trả lời, thống kê realtime, Top 10 và danh sách người
+          tham gia.</div>
+      </div>
+      <div class="text-end">
+        <a class="btn btn-outline-light btn-sm" href="/mc_gate">Đổi ROOM</a>
+      </div>
+    </div>
+
+    <hr class="border-secondary my-4" />
+
+    <div class="card bg-black border-secondary mb-4">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+          <div>
+            <h4 class="mb-1">ROOM: <span id="roomBadge" class="badge bg-secondary">---</span></h4>
+            <div class="text-bright-hint small">
+              Trạng thái: <b id="roomStatus">---</b> |
+              Số câu hỏi: <b id="qCount">0</b> |
+              Người chơi: <b id="playerCount">0</b>
+            </div>
+          </div>
+          <div class="text-end small text-bright-hint">
+          </div>
+        </div>
+
+        <div id="denyBox" class="alert alert-danger mt-3 d-none"></div>
+      </div>
+    </div>
+
+    <div id="runningPanels">
+      <div>
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h5 class="mb-0">Câu hỏi hiện tại</h5>
+          <div id="mcTimer" class="badge bg-primary fs-5" style="min-width: 60px; text-align: center;">--</div>
+        </div>
+        <div id="currentQuestionBox" class="p-3 rounded border border-secondary bg-dark-subtle text-dark">
+          <div class="text-bright-hint">Chưa bắt đầu.</div>
+        </div>
+      </div>
+
+      <hr class="border-secondary my-3" />
+
+      <!-- Live stats -->
+      <div class="row g-3">
+        <div class="col-12 col-lg-6">
+          <h5 class="mb-2">Thống kê realtime (sau mỗi câu & trong lúc chạy)</h5>
+          <div id="statsBox" class="p-3 rounded border border-secondary bg-black">
+            <div class="text-bright-hint">Chưa có dữ liệu.</div>
+          </div>
+        </div>
+        <div class="col-12 col-lg-6">
+          <h5 class="mb-2">Top 10 hiện tại</h5>
+          <div class="table-responsive">
+            <table class="table table-dark table-striped table-hover align-middle">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Họ tên</th>
+                  <th>Đơn vị</th>
+                  <th>Điểm</th>
+                </tr>
+              </thead>
+              <tbody id="top10Body">
+                <tr>
+                  <td colspan="4" class="text-bright-hint">Chưa có.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <hr class="border-secondary my-3" />
+
+      <!-- Player list -->
+      <div>
+        <h5 class="mb-2">Danh sách người chơi đã tham gia <span class="text-danger">: <span
+              id="joinedCountInline">0</span> người đã tham gia</span></h5>
+        <div class="table-responsive">
+          <table class="table table-dark table-striped table-hover align-middle">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Họ tên</th>
+                <th>Mã NV</th>
+                <th>Chức danh</th>
+                <th>Đơn vị</th>
+                <th>Tham gia lúc</th>
+                <th class="text-center">Điểm</th>
+              </tr>
+            </thead>
+            <tbody id="playerTableBody">
+              <td colspan="7" class="text-bright-hint">Chưa có dữ liệu.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Final results panel -->
+    <div id="finalResultsBox" class="d-none mt-4">
+      <div class="card border-warning bg-black">
+        <div class="card-header bg-warning text-dark">
+          <h4 class="mb-0 text-uppercase text-center fw-bold" style="color:#000 !important;">🏆 BẢNG XẾP HẠNG CHUNG CUỘC
+          </h4>
+        </div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-dark table-striped table-hover align-middle mb-0">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Họ tên</th>
+                  <th>Đơn vị</th>
+                  <th class="text-center">Tổng câu</th>
+                  <th class="text-center">Số câu đúng</th>
+                  <th class="text-center">% Đúng</th>
+                  <th class="text-center">Điểm</th>
+                </tr>
+              </thead>
+              <tbody id="finalTableBody">
+                <tr>
+                  <td colspan="7" class="text-center text-bright-hint py-3">Chưa có dữ liệu.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    const socket = io({ transports: ['websocket', 'polling'] });
+
+    function upper(s) { return (s || "").toString().trim().toUpperCase(); }
+
+    function fmtPct(n) {
+      const x = Number(n || 0);
+      return x.toFixed(2).replace(".", ",") + "%";
+    }
+
+    function setRoomUI(code) {
+      const badge = document.getElementById("roomBadge");
+      if (badge) badge.textContent = code || "---";
+    }
+
+    function renderPlayers(players) {
+      const tb = document.getElementById("playerTableBody");
+      const pc = document.getElementById("playerCount");
+      const jc = document.getElementById("joinedCountInline");
+      if (pc) pc.textContent = (players || []).length;
+      if (jc) jc.textContent = (players || []).length;
+
+      tb.innerHTML = "";
+      if (!players || players.length === 0) {
+        tb.innerHTML = `<tr><td colspan="7" class="text-bright-hint">Chưa có người chơi.</td></tr>`;
+        return;
+      }
+
+      window.__player_score_cache = window.__player_score_cache || {};
+      const st = document.getElementById("roomStatus");
+      const isRunning = (st && st.textContent === "running");
+      const tEl = document.getElementById("mcTimer");
+      const isTimeUp = (tEl && (tEl.textContent === "Hết giờ" || tEl.textContent === "--"));
+
+      // Prepare scores and sorting
+      players.forEach(p => {
+        if (!isRunning || isTimeUp) {
+          window.__player_score_cache[p.id] = p.score || 0;
+        } else {
+          if (window.__player_score_cache[p.id] !== undefined) {
+            p.score = window.__player_score_cache[p.id];
+          } else {
+            p.score = 0;
+          }
+        }
+      });
+
+      const stText = st ? st.textContent : "";
+      if (stText === "ended") {
+        players.sort((a, b) => (b.score || 0) - (a.score || 0));
+      }
+
+      players.forEach((p, idx) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+        <td>${idx + 1}</td>
+        <td>${p.name}</td>
+        <td>${p.employee_code || ""}</td>
+        <td>${p.position || ""}</td>
+        <td>${p.unit}</td>
+        <td class="small">${p.joined_at}</td>
+        <td class="text-center"><b class="fs-6">${p.score || 0}</b></td>
+      `;
+        tb.appendChild(tr);
+      });
+    }
+
+    function renderTop10(rows) {
+      const tb = document.getElementById("top10Body");
+      tb.innerHTML = "";
+      if (!rows || rows.length === 0) {
+        tb.innerHTML = `<tr><td colspan="4" class="text-bright-hint">Chưa có.</td></tr>`;
+        return;
+      }
+      rows.forEach((r, idx) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+        <td>${idx + 1}</td>
+        <td>${r.name}</td>
+        <td>${r.unit}</td>
+        <td><b>${r.score}</b></td>
+      `;
+        tb.appendChild(tr);
+      });
+    }
+
+    function renderMCFinalBoard(rows) {
+      const tb = document.getElementById("finalTableBody");
+      tb.innerHTML = "";
+      if (!rows || rows.length === 0) {
+        tb.innerHTML = `<tr><td colspan="7" class="text-center text-bright-hint py-3">Chưa có dữ liệu.</td></tr>`;
+        return;
+      }
+
+      try {
+        rows.forEach((r, idx) => {
+          const tr = document.createElement("tr");
+          // Highlight top 10 rows (text only, bold)
+          if (idx < 10) {
+            tr.classList.add("text-warning", "fw-bold");
+          }
+
+          tr.innerHTML = `
+            <td>${idx + 1}</td>
+            <td><b>${r.name || ""}</b></td>
+            <td>${r.unit || ""}</td>
+            <td class="text-center">${r.total_questions || 0}</td>
+            <td class="text-center">${r.correct_count || 0}</td>
+            <td class="text-center">${fmtPct(r.accuracy_pct || 0)}</td>
+            <td class="text-center fs-5"><b>${r.score || 0}</b></td>
+          `;
+          tb.appendChild(tr);
+        });
+      } catch (err) {
+        tb.innerHTML = `<tr><td colspan="7" class="text-danger">Lỗi render Final Board: ${err.message}</td></tr>`;
+      }
+    }
+
+    function renderCurrentQuestion(q, roomStatus) {
+      const box = document.getElementById("currentQuestionBox");
+      if (!box) return;
+
+      if (roomStatus === "ended") {
+        box.innerHTML = `<div class="text-bright-hint fs-5">Bài thi đã kết thúc.</div>`;
+        return;
+      }
+
+      if (!q) {
+        box.innerHTML = `<div class="text-bright-hint">Chưa bắt đầu.</div>`;
+        return;
+      }
+
+      const dur = (q.duration_sec !== null && q.duration_sec !== undefined) ? q.duration_sec : "";
+      const durBadge = dur ? `<span class="badge bg-dark text-light border border-secondary ms-2">TG Excel: ${dur}s</span>` : "";
+      const imgHtml = q.image_url ? `<div class="mb-3"><img src="${q.image_url}" alt="" style="max-height:180px; max-width:100%; border-radius:8px; border:1px solid rgba(255,255,255,0.2);"/></div>` : "";
+
+      box.innerHTML = `
+      <div class="mb-2">
+        <b>${q.stt ? (q.stt + ". ") : ""}${q.question_text}</b>
+        ${durBadge}
+      </div>
+      ${imgHtml}
+      <div class="row g-2">
+        <div class="col-12 col-md-6"><div class="p-2 rounded bg-black text-light border border-secondary d-flex justify-content-between align-items-center gap-2"><span class="flex-grow-1">A. ${q.opt_a}</span><span id="distA" class="badge bg-secondary border border-light-subtle">0 (0.00%)</span></div></div>
+        <div class="col-12 col-md-6"><div class="p-2 rounded bg-black text-light border border-secondary d-flex justify-content-between align-items-center gap-2"><span class="flex-grow-1">B. ${q.opt_b}</span><span id="distB" class="badge bg-secondary border border-light-subtle">0 (0.00%)</span></div></div>
+        <div class="col-12 col-md-6"><div class="p-2 rounded bg-black text-light border border-secondary d-flex justify-content-between align-items-center gap-2"><span class="flex-grow-1">C. ${q.opt_c}</span><span id="distC" class="badge bg-secondary border border-light-subtle">0 (0.00%)</span></div></div>
+        <div class="col-12 col-md-6"><div class="p-2 rounded bg-black text-light border border-secondary d-flex justify-content-between align-items-center gap-2"><span class="flex-grow-1">D. ${q.opt_d}</span><span id="distD" class="badge bg-secondary border border-light-subtle">0 (0.00%)</span></div></div>
+      </div>
+      <div id="mcCorrectAnswerWrap" class="mt-3 ${window.__mc_show_correct_answer === false ? 'd-none' : ''}">
+        <span class="badge bg-success">Đáp án đúng: ${q.correct}</span>
+      </div>
+    `;
+    }
+
+    function updateOptionDist(a, b, c, d) {
+      const fmt = (x) => {
+        const cnt = x?.count ?? 0;
+        const pct = (x?.pct ?? 0);
+        const pctTxt = (typeof pct === "number") ? pct.toFixed(2) : (pct?.toFixed ? pct.toFixed(2) : pct);
+        return `${cnt} (${pctTxt}%)`;
+      };
+      const elA = document.getElementById("distA");
+      const elB = document.getElementById("distB");
+      const elC = document.getElementById("distC");
+      const elD = document.getElementById("distD");
+      if (elA) elA.textContent = fmt(a);
+      if (elB) elB.textContent = fmt(b);
+      if (elC) elC.textContent = fmt(c);
+      if (elD) elD.textContent = fmt(d);
+    }
+
+    function renderStats(stats, optionStats, players) {
+      const box = document.getElementById("statsBox");
+      if (!box) return;
+
+      const players_total = (players && Array.isArray(players)) ? players.length : 0;
+
+      if (!stats && !optionStats) {
+        box.innerHTML = `<div class="text-bright-hint">Chưa có dữ liệu.</div>`;
+        return;
+      }
+
+      const answered = (stats && (stats.answered ?? stats.answered_total)) ?? 0;
+      const correct = (stats && (stats.correct ?? stats.correct_total)) ?? 0;
+      const wrong = (stats && (stats.wrong ?? stats.wrong_total)) ?? 0;
+      const no_answer = (stats && (stats.no_answer ?? stats.no_answer_total)) ?? Math.max(0, players_total - answered);
+
+      let fastestText = "Chưa có";
+      if (stats) {
+        if (stats.fastest_correct) {
+          fastestText = `${stats.fastest_correct.name} (${stats.fastest_correct.unit}) - ${(stats.fastest_correct.elapsed_ms / 1000).toFixed(2)}s`;
+        } else if (stats.fastest_correct_name) {
+          const t = (stats.fastest_correct_elapsed_ms != null) ? ` - ${(stats.fastest_correct_elapsed_ms / 1000).toFixed(2)}s` : "";
+          fastestText = `${stats.fastest_correct_name}${t}`;
+        }
+      }
+
+      const dist = optionStats || {};
+      const a = dist.A || { count: 0, pct: 0 };
+      const b = dist.B || { count: 0, pct: 0 };
+      const c = dist.C || { count: 0, pct: 0 };
+      const d = dist.D || { count: 0, pct: 0 };
+
+      box.innerHTML = `
+      <div class="mb-2">
+        Tổng người chơi: <b>${players_total}</b><br/>
+        Đã trả lời: <b>${answered}</b><br/>
+        <div>Đúng: <b class="text-success">${correct}</b> | Sai: <b class="text-danger">${wrong}</b> | Không trả lời: <b class="text-warning">${no_answer}</b></div>
+        Nhanh nhất (đúng): <b class="text-info">${fastestText}</b>
+      </div>
+      <div class="small text-bright-hint">Phân bố lựa chọn A/B/C/D:</div>
+      <div class="mt-1">
+        A: <b>${a.count} (${(a.pct ?? 0).toFixed(2)}%)</b><br/>
+        B: <b>${b.count} (${(b.pct ?? 0).toFixed(2)}%)</b><br/>
+        C: <b>${c.count} (${(c.pct ?? 0).toFixed(2)}%)</b><br/>
+        D: <b>${d.count} (${(d.pct ?? 0).toFixed(2)}%)</b>
+      </div>
+    `;
+    }
+
+    function applyState(state) {
+      if (!state) return;
+      const room = state.room;
+      let roomStatus = "";
+      if (room) {
+        roomStatus = room.status || "";
+        setRoomUI(room.room_code);
+        const st = document.getElementById("roomStatus");
+        const qc = document.getElementById("qCount");
+        if (st) st.textContent = roomStatus || "---";
+        if (qc) qc.textContent = state.question_count ?? 0;
+      }
+
+      const runningPanels = document.getElementById("runningPanels");
+      const finalResultsBox = document.getElementById("finalResultsBox");
+
+      if (roomStatus === "ended") {
+        // Hide running panels, show final results
+        if (runningPanels) runningPanels.classList.add("d-none");
+        if (finalResultsBox) finalResultsBox.classList.remove("d-none");
+
+        // Render the final board
+        if (state.final_board) {
+          renderMCFinalBoard(state.final_board);
+        }
+      } else {
+        // Show running panels, hide final results
+        if (runningPanels) runningPanels.classList.remove("d-none");
+        if (finalResultsBox) finalResultsBox.classList.add("d-none");
+
+        window.__mc_show_correct_answer = state.mc_show_correct_answer !== false;
+
+        // Toggle existing badge if already rendered
+        const ansWrap = document.getElementById("mcCorrectAnswerWrap");
+        if (ansWrap) {
+          if (window.__mc_show_correct_answer) {
+            ansWrap.classList.remove("d-none");
+          } else {
+            ansWrap.classList.add("d-none");
+          }
+        }
+
+        // Normal realtime rendering
+        renderPlayers(state.players || []);
+        renderCurrentQuestion(state.current_question, roomStatus);
+        renderStats(state.stats, state.option_stats, state.players || []);
+        renderTop10(state.top10 || []);
+
+        if (state.option_stats) {
+          updateOptionDist(state.option_stats.A, state.option_stats.B, state.option_stats.C, state.option_stats.D);
+        }
+
+        // Sync timer if running
+        if (roomStatus === "running" && state.current_question && state.current_question.start_ms) {
+          startMCTimer(state.current_question.start_ms, state.current_question.duration_sec || 0);
+        } else {
+          stopMCTimer();
+        }
+      }
+    }
+
+    let mcTimerInterval = null;
+    let currentStartMs = null;
+    let currentDuration = 0;
+
+    function stopMCTimer() {
+      if (mcTimerInterval) {
+        clearInterval(mcTimerInterval);
+        mcTimerInterval = null;
+      }
+      currentStartMs = null;
+      const tEl = document.getElementById("mcTimer");
+      if (tEl) {
+        tEl.textContent = "--";
+        tEl.classList.remove("bg-danger");
+        tEl.classList.add("bg-primary");
+      }
+    }
+
+    function startMCTimer(startMs, duration) {
+      currentStartMs = startMs;
+      currentDuration = duration;
+      const tEl = document.getElementById("mcTimer");
+      if (tEl) {
+        tEl.classList.remove("bg-danger");
+        tEl.classList.add("bg-primary");
+      }
+
+      if (mcTimerInterval) clearInterval(mcTimerInterval);
+
+      mcTimerInterval = setInterval(() => {
+        if (!currentStartMs) return;
+        const now = Date.now();
+        const elapsed = Math.max(0, now - currentStartMs);
+        const remain = Math.max(0, currentDuration * 1000 - elapsed);
+        const sec = Math.ceil(remain / 1000);
+
+        if (tEl) {
+          tEl.textContent = sec.toString();
+        }
+
+        if (remain <= 0) {
+          clearInterval(mcTimerInterval);
+          if (tEl) {
+            tEl.textContent = "Hết giờ";
+            tEl.classList.remove("bg-primary");
+            tEl.classList.add("bg-danger");
+          }
+        }
+      }, 120);
+    }
+
+    // -------------------------
+    // Join MC
+    // -------------------------
+    (function init() {
+      const params = new URLSearchParams(window.location.search);
+      const room = upper(params.get("room") || "");
+
+      let code = "";
+      try { code = (localStorage.getItem("quiz_mc_code") || "").trim(); } catch (e) { }
+
+      if (!room) {
+        window.location.href = "/mc_gate";
+        return;
+      }
+
+      setRoomUI(room);
+      socket.emit("mc_join", { room_code: room, code: code });
+    })();
+
+    socket.on("mc_denied", (data) => {
+      const deny = document.getElementById("denyBox");
+      if (deny) {
+        deny.classList.remove("d-none");
+        deny.textContent = (data && data.msg) ? data.msg : "Không vào được màn MC.";
+      }
+    });
+
+    socket.on("mc_state", (state) => { applyState(state); });
+
+    socket.on("question_started", (st) => {
+      if (!st) return;
+      startMCTimer(st.start_ms, st.duration);
+    });
+
+    socket.on("time_up", () => {
+      const tEl = document.getElementById("mcTimer");
+      if (tEl) {
+        tEl.textContent = "Hết giờ";
+        tEl.classList.remove("bg-primary");
+        tEl.classList.add("bg-danger");
+      }
+    });
+
+    socket.on("question_ended", () => {
+      stopMCTimer();
+    });
+
+    socket.on("quiz_ended", () => {
+      stopMCTimer();
+    });
+
+    // Keep realtime join count update
+    socket.on("player_list_updated", (payload) => {
+      const players = payload?.players || [];
+      renderPlayers(players);
+    });
+  </script>
+
+  {% include "_footer.html" %}
+
+</body>
+
+</html>

@@ -1,0 +1,9 @@
+Cài Python 3.14.2 tại C:\Python314
+Đặt app thư mục tại D:\Quizzi_V.8.2
+Trong thư mục D:\Quizzi_V.8.2 chạy Powershell
+Chạy lệnh:
+
+.\venv\Scripts\activate
+python app.py
+
+

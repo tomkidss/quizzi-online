@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Tham gia cuộc thi</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <style>
+    body {
+      background: #111;
+      color: #fff;
+      padding: 20px;
+    }
+
+    input,
+    button {
+      width: 100%;
+      padding: 14px;
+      margin-top: 10px;
+      font-size: 18px;
+      border-radius: 10px;
+      border: none;
+    }
+
+    input {
+      background: #222;
+      color: #fff;
+      border: 1px solid #333;
+    }
+
+    button {
+      background: #00c853;
+      color: #000;
+      font-weight: 900;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    input:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      background: #333;
+    }
+
+    .note {
+      color: rgba(255, 255, 255, 0.85);
+      font-size: 14px;
+      margin-top: 12px;
+      line-height: 1.35;
+    }
+
+    .msg {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: #1b1b1b;
+      border: 1px solid #333;
+    }
+
+    .ok {
+      color: #7CFFB2;
+    }
+
+    .err {
+      color: #FF8A8A;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+    }
+
+    h2 {
+      margin: 0 0 6px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="dynamic-bg-layer" id="dynamicBgLayer"></div>
+  <h2>📱 Tham gia cuộc thi</h2>
+  <div class="note">
+    Hãy nhập đúng <b>ROOM</b> và thông tin cá nhân theo hướng dẫn BTC.
+  </div>
+
+  <div class="row">
+    <input id="room" placeholder="Mã phòng thi (VD: A9F2QX)" autocapitalize="characters">
+    <input id="fullname" placeholder="Họ và tên">
+    <input id="position" placeholder="Chức danh">
+    <input id="unit" placeholder="Đơn vị/Bộ phận">
+    <input id="employee_code" placeholder="Mã NV/Mã dự thi">
+  </div>
+
+  <button id="btnJoin" type="button">THAM GIA</button>
+
+  <div id="msg" class="msg">Trạng thái: <span id="conn">đang kết nối...</span></div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    const params = new URLSearchParams(window.location.search);
+    const roomFromURL = (params.get("room") || params.get("RoomCode") || "").trim().toUpperCase();
+    if (roomFromURL) {
+      $("room").value = roomFromURL;
+      $("room").disabled = true;
+    }
+
+    const barcodeFromURL = (params.get("Barcode") || params.get("barcode") || params.get("Id") || params.get("id") || "").trim();
+    if (barcodeFromURL) {
+      $("employee_code").value = barcodeFromURL;
+      $("employee_code").disabled = true;
+    }
+
+    // QR Tự động điền dữ liệu
+    const fullnameFromURL = (params.get("FullName") || params.get("fullname") || params.get("name") || "").trim();
+    if (fullnameFromURL) {
+      $("fullname").value = fullnameFromURL;
+      $("fullname").disabled = true;
+    }
+
+    const positionFromURL = (params.get("PositionName") || params.get("positionname") || params.get("position") || "").trim();
+    if (positionFromURL) {
+      $("position").value = positionFromURL;
+      $("position").disabled = true;
+    }
+
+    const hotelCodeFromURL = (params.get("HotelCode") || params.get("hotelcode") || params.get("unit") || "").trim();
+    if (hotelCodeFromURL) {
+      $("unit").value = hotelCodeFromURL;
+      $("unit").disabled = true;
+    }
+
+    const socket = io({ transports: ['websocket', 'polling'] });
+
+    function setMsg(text, type) {
+      const cls = (type === "err") ? "err" : "ok";
+      $("msg").innerHTML = `Trạng thái: <span class="${cls}">${text}</span>`;
+    }
+
+    socket.on("connect", () => {
+      $("conn").textContent = "đã kết nối ✅";
+    });
+
+    socket.on("connect_error", () => {
+      $("conn").textContent = "lỗi kết nối ❌";
+      setMsg("Không kết nối được server. Kiểm tra IP/port và cùng mạng Wi-Fi.", "err");
+    });
+
+    $("btnJoin").addEventListener("click", () => {
+      const room_code = ($("room").value || "").trim().toUpperCase();
+      const name = ($("fullname").value || "").trim();
+      const employee_code = ($("employee_code").value || "").trim();
+      const position = ($("position").value || "").trim();
+      const unit = ($("unit").value || "").trim();
+
+      if (!room_code || !name || !employee_code || !position || !unit) {
+        setMsg("Vui lòng nhập đầy đủ thông tin.", "err");
+        return;
+      }
+
+      if (!socket.connected) {
+        setMsg("Chưa kết nối được server.", "err");
+        return;
+      }
+
+      $("btnJoin").disabled = true;
+      setMsg("Đang gửi thông tin tham gia...", "ok");
+
+      const existingPlayerId = localStorage.getItem("quiz_player_id") || "";
+
+      socket.emit("player_join", {
+        room_code,
+        name,
+        employee_code,
+        position,
+        unit,
+        player_id: existingPlayerId
+      });
+    });
+
+    socket.on("join_result", (res) => {
+      $("btnJoin").disabled = false;
+
+      if (!res || !res.ok) {
+        setMsg(res?.msg || "Không thể tham gia.", "err");
+        return;
+      }
+
+      localStorage.setItem("quiz_room_code", res.room_code);
+      localStorage.setItem("quiz_player_id", res.player_id);
+      localStorage.setItem("quiz_player_name", ($("fullname").value || "").trim());
+
+      setMsg("Tham gia thành công! Đang chuyển sang màn làm bài...", "ok");
+
+      window.location.href =
+        `/player?room=${encodeURIComponent(res.room_code)}&player_id=${encodeURIComponent(res.player_id)}`;
+    });
+  </script>
+  <script>
+    fetch('/api/bg/player')
+      .then(r => r.json())
+      .then(d => {
+        if (d && d.url) document.getElementById('dynamicBgLayer').style.backgroundImage = `url('${d.url}')`;
+      }).catch(e => console.log("No dynamic bg"));
+  </script>
+
+  {% include "_footer.html" %}
+
+</body>
+
+</html>

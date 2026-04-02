@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8"/>
+  <title>Nhập code Display</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body class="bg-dark text-light">
+<div class="container py-5" style="max-width:460px;">
+  <h3 class="mb-1">Màn hình Display</h3>
+  <p class="text-bright-hint mb-4">
+    Nhập <b>ROOM</b> và <b>Display code</b> do BTC cung cấp để vào màn hình trình chiếu.
+  </p>
+
+  <div class="card bg-black border-secondary">
+    <div class="card-body">
+      <div class="mb-3">
+        <label class="form-label text-bright-hint">ROOM</label>
+        <input id="room" class="form-control form-control-lg text-uppercase" placeholder="VD: A9F2QX" autofocus>
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label text-bright-hint">Display code</label>
+        <input id="code" class="form-control form-control-lg" placeholder="VD: 9999">
+      </div>
+
+      <button id="btnGo" class="btn btn-success w-100 btn-lg">VÀO MÀN HÌNH</button>
+
+      <div id="msg" class="mt-3 small text-bright-hint"></div>
+    </div>
+  </div>
+
+  <div class="mt-3 small text-bright-hint">
+    Mẹo: nếu BTC bật QR, người chơi có thể vào muộn. Display vẫn vào theo ROOM.
+  </div>
+</div>
+
+<script>
+  const $ = (id)=>document.getElementById(id);
+
+  // Prefill room if passed
+  const params = new URLSearchParams(window.location.search);
+  const roomFromUrl = (params.get("room") || "").trim().toUpperCase();
+  if(roomFromUrl) $("room").value = roomFromUrl;
+
+  // Remember last
+  try{
+    const savedRoom = localStorage.getItem("quiz_display_room") || "";
+    if(!roomFromUrl && savedRoom) $("room").value = savedRoom;
+  }catch(e){}
+
+  $("btnGo").addEventListener("click", ()=>{
+    const room = ($("room").value || "").trim().toUpperCase();
+    const code = ($("code").value || "").trim();
+
+    if(!room){
+      $("msg").textContent = "Vui lòng nhập ROOM.";
+      return;
+    }
+    if(!code){
+      $("msg").textContent = "Vui lòng nhập Display code.";
+      return;
+    }
+
+    try{
+      localStorage.setItem("quiz_display_room", room);
+      localStorage.setItem("quiz_display_code", code);
+    }catch(e){}
+
+    // Chuyển sang display theo ROOM
+    window.location.href = `/display?room=${encodeURIComponent(room)}`;
+  });
+</script>
+{% include "_footer.html" %}
+
+</body>
+</html>

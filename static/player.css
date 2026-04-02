@@ -1,0 +1,275 @@
+body {
+  background: #000;
+  color: #fff;
+  padding: 10px;
+}
+
+/* giữ tương thích nếu còn DOM id cũ */
+#options {
+  margin-top: 20px;
+}
+
+.opt, .opt-btn {
+  width: 100%;
+  padding: 16px 14px;
+  margin-bottom: 12px;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.35;
+  border-radius: 14px;
+  border: none;
+  background: #1e88e5;
+  color: #fff;
+  text-align: left;
+}
+
+.opt:disabled, .opt-btn:disabled {
+  background: #444;
+  opacity: 0.7;
+}
+
+.opt.chosen, .opt-btn.selected {
+  background: #00e676;
+  color: #000;
+}
+
+#timer {
+  margin-top: 10px;
+  color: #ffeb3b;
+  font-size: 18px;
+}
+
+#status {
+  color: rgba(255,255,255,0.9);
+}
+
+#question {
+  margin-top: 8px;
+  color: rgba(255,255,255,0.92);
+}
+
+/* Flash feedback */
+.flash-ok {
+  animation: flashOk 0.25s ease-in-out;
+}
+@keyframes flashOk {
+  0% { filter: brightness(1); }
+  50% { filter: brightness(1.35); }
+  100% { filter: brightness(1); }
+}
+
+
+/* V8.1 PLAYER 3D OPTIONS
+   - Dùng theme opt3d + opt-0..3 trong style.css
+   - Không đổi layout, chỉ làm đẹp nút phương án + hiệu ứng chọn
+*/
+.player-options .opt-btn{
+  border-radius: 16px;
+  padding: 18px 18px;
+  min-height: 74px;
+  font-weight: 800;
+  font-size: 18px;
+  line-height: 1.25;
+  text-align: center;
+  letter-spacing: .15px;
+  border: 1px solid rgba(255,255,255,.10);
+}
+
+/* gán khối 3D + màu theo thứ tự 4 nút */
+.player-options .opt-btn:nth-child(1){ background: var(--optA); }
+.player-options .opt-btn:nth-child(2){ background: var(--optB); }
+.player-options .opt-btn:nth-child(3){ background: var(--optC); }
+.player-options .opt-btn:nth-child(4){ background: var(--optD); }
+
+.player-options .opt-btn{
+  position: relative;
+  box-shadow:
+    0 12px 0 rgba(0,0,0,.20),
+    0 18px 28px rgba(0,0,0,.35);
+  transform: translateY(0);
+  transition: transform .12s ease, filter .12s ease, opacity .12s ease;
+  overflow: hidden;
+}
+
+/* highlight */
+.player-options .opt-btn:before{
+  content:"";
+  position:absolute;
+  left:0; top:0; right:0;
+  height:42%;
+  background: linear-gradient(180deg, rgba(255,255,255,.22), rgba(255,255,255,0));
+  pointer-events:none;
+}
+.player-options .opt-btn:after{
+  content:"";
+  position:absolute;
+  left:0; right:0; bottom:-2px;
+  height:14px;
+  background: rgba(0,0,0,.18);
+  filter: blur(6px);
+  pointer-events:none;
+}
+
+/* hover/press nhẹ (không phá neon) */
+.player-options .opt-btn:hover{ transform: translateY(-2px); }
+.player-options .opt-btn:active{ transform: translateY(2px); box-shadow: 0 8px 0 rgba(0,0,0,.18), 0 12px 20px rgba(0,0,0,.35); }
+
+/* Khi đã chọn: làm nổi phương án đã chọn, mờ các phương án còn lại */
+.player-options.has-selected .opt-btn{ opacity: .35; filter: saturate(.85) brightness(.9); }
+.player-options.has-selected .opt-btn.selected{ opacity: 1; filter: none; transform: translateY(-2px); }
+
+/* Khi bị khóa (hết giờ / đã gửi): giữ trạng thái nhưng không hover */
+.player-options .opt-btn:disabled:hover{ transform: translateY(0); }
+
+/* Responsive */
+@media (max-width: 600px){
+  .player-options .opt-btn{
+    font-size: 16px;
+    min-height: 66px;
+    padding: 16px;
+  }
+}
+
+
+/* V8.1.1 PLAYER TUNING – nhấn mạnh chọn 1 phương án, mờ 3 phương án còn lại */
+.player-options .opt-btn{
+  color: var(--optText);
+  text-shadow: 0 2px 10px rgba(0,0,0,.35);
+}
+
+/* hover nâng khối nhẹ + glow thêm chút */
+.player-options .opt-btn:hover{
+  filter: saturate(1.02) brightness(1.03);
+  box-shadow:
+    0 10px 0 rgba(0,0,0,.18),
+    0 20px 34px rgba(0,0,0,.48),
+    inset 0 1px 0 rgba(255,255,255,.18),
+    inset 0 -10px 18px rgba(0,0,0,.18);
+}
+
+/* Khi đã chọn: phương án được chọn nổi, các phương án còn lại mờ + blur rất nhẹ */
+.player-options.has-selected .opt-btn{
+  opacity: .28;
+  filter: saturate(.82) brightness(.88) blur(.3px);
+  transform: translateY(0);
+}
+
+.player-options.has-selected .opt-btn.selected{
+  opacity: 1;
+  filter: none;
+  transform: translateY(-3px);
+  box-shadow:
+    0 12px 0 rgba(0,0,0,.18),
+    0 24px 40px rgba(0,0,0,.52),
+    0 0 0 2px rgba(255,255,255,.14),
+    0 0 28px rgba(255,255,255,.14),
+    inset 0 1px 0 rgba(255,255,255,.22),
+    inset 0 -10px 18px rgba(0,0,0,.18);
+}
+
+/* Disabled: giảm tương tác nhưng vẫn giữ màu */
+.player-options .opt-btn:disabled{
+  cursor: not-allowed;
+  filter: saturate(.92) brightness(.92);
+}
+
+
+/* Result notice popup */
+.result-notice-overlay{
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.45);
+  z-index: 9999;
+}
+.result-notice-box{
+  min-width: 70%;
+  max-width: 520px;
+  padding: 18px 18px;
+  border-radius: 18px;
+  text-align: center;
+  font-weight: 900;
+  font-size: 34px;
+  box-shadow: 0 0 24px rgba(0,0,0,0.6);
+  border: 2px solid rgba(255,255,255,0.35);
+}
+.result-notice-box.correct{
+  background: rgba(120, 255, 170, 0.25);
+  color: #eafff1;
+}
+.result-notice-box.incorrect{
+  background: rgba(255, 60, 60, 0.70);
+  color: #ffffff;
+}
+
+
+/* ===== Result notice: stage style enhancements ===== */
+.result-notice-overlay{
+  backdrop-filter: blur(6px);
+}
+
+.result-notice-box{
+  min-width: min(760px, 92vw);
+  border-radius: 18px;
+  padding: 18px 22px;
+  box-shadow: 0 0 22px rgba(0,255,255,0.18), 0 0 60px rgba(0,0,0,0.45);
+  transform: scale(0.96);
+  animation: rnPopIn 220ms ease-out forwards, rnPulse 1.2s ease-in-out 220ms infinite;
+}
+
+@keyframes rnPopIn{
+  from { transform: scale(0.90); opacity: 0; }
+  to   { transform: scale(1.00); opacity: 1; }
+}
+
+@keyframes rnPulse{
+  0%,100%{ filter: drop-shadow(0 0 0 rgba(255,255,255,0.0)); }
+  50%    { filter: drop-shadow(0 0 12px rgba(255,255,255,0.18)); }
+}
+
+.result-notice-box.correct{
+  background: linear-gradient(90deg, rgba(40,255,170,0.18), rgba(0,255,190,0.35), rgba(40,255,170,0.18));
+  border: 2px solid rgba(90,255,210,0.85);
+}
+
+.result-notice-box.incorrect{
+  background: linear-gradient(90deg, rgba(255,60,60,0.22), rgba(255,60,60,0.42), rgba(255,60,60,0.22));
+  border: 2px solid rgba(255,120,120,0.9);
+}
+
+.result-notice-text{
+  letter-spacing: 0.5px;
+  text-shadow: 0 2px 14px rgba(0,0,0,0.35);
+}
+
+
+
+/* ===== Mobile reliability overrides ===== */
+.result-notice-overlay{
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 99999 !important;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.35); /* fallback for iOS (avoid relying on backdrop-filter) */
+}
+
+.result-notice-box{
+  z-index: 100000 !important;
+}
+
+/* ===== State Text Animation ===== */
+.text-blink-red {
+  color: #ff3333 !important;
+  font-weight: bold;
+  text-shadow: 0 0 10px rgba(255, 51, 51, 0.8), 0 0 20px rgba(255, 51, 51, 0.5);
+  animation: pulse-red 1s infinite alternate;
+}
+
+@keyframes pulse-red {
+  0% { opacity: 1; text-shadow: 0 0 10px rgba(255, 51, 51, 0.8), 0 0 20px rgba(255, 51, 51, 0.5); }
+  100% { opacity: 0.6; text-shadow: 0 0 5px rgba(255, 51, 51, 0.5); }
+}

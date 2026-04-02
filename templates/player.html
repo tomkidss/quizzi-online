@@ -1,0 +1,1124 @@
+<!doctype html>
+<html lang="vi">
+
+<head>
+  <meta charset="utf-8" />
+  <title>Player</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/static/style.css?v=56">
+  <link rel="stylesheet" href="/static/player.css?v=56">
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
+
+  <style>
+    /* Bổ sung nhẹ, không phá theme cũ */
+    .player-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .player-name {
+      font-weight: 800;
+      letter-spacing: .2px;
+      padding: 6px 10px;
+      border: 1px solid rgba(255, 255, 255, .15);
+      border-radius: 12px;
+      background: rgba(0, 0, 0, .35);
+      color: #fff;
+    }
+
+    .player-qno {
+      font-weight: 700;
+      padding: 6px 10px;
+      border-radius: 12px;
+      border: 1px solid rgba(0, 255, 255, .25);
+      background: rgba(0, 80, 120, .25);
+      color: #bff;
+    }
+
+    .player-question-box {
+      padding: 12px 12px;
+      border-radius: 14px;
+      border: 1px solid rgba(0, 255, 200, .25);
+      background: rgba(0, 0, 0, .38);
+      color: #fff;
+      margin-bottom: 12px;
+      line-height: 1.35;
+      font-weight: 700;
+      text-align: center;
+    }
+
+    .muted {
+      color: rgba(255, 255, 255, .65);
+    }
+
+    /* ===== Final screen (màn hình kết quả riêng) ===== */
+    #finalScreen {
+      display: none;
+      min-height: calc(100vh - 40px);
+      padding: 10px 0;
+    }
+
+    .final-card {
+      margin-top: 12px;
+      padding: 28px;
+      border-radius: 22px;
+      border: 1px solid rgba(255, 255, 255, .18);
+      background: rgba(0, 0, 0, .45);
+      color: #fff;
+    }
+
+    .final-title {
+      font-size: 42px;
+      font-weight: 900;
+      letter-spacing: .2px;
+      margin: 0 0 6px;
+      color: #fff;
+      text-shadow: 0 0 12px #f39c12, 0 0 24px #f1c40f, 0 0 36px #f1c40f;
+    }
+
+    .final-sub {
+      color: rgba(255, 255, 255, .75);
+      margin-bottom: 10px;
+    }
+
+    .final-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px 12px;
+      margin-top: 10px;
+      font-size: 28px;
+    }
+
+    .final-grid .k {
+      color: rgba(255, 255, 255, .70);
+    }
+
+    .final-grid .v {
+      font-weight: 900;
+      color: #fff !important;
+    }
+
+    .final-grid .v.correct-val { color: #198754 !important; text-shadow: 0 0 8px rgba(25,135,84,0.5); }
+    .final-grid .v.wrong-val   { color: #dc3545 !important; text-shadow: 0 0 8px rgba(220,53,69,0.5); }
+    .final-grid .v.noanswer-val{ color: #ffc107 !important; text-shadow: 0 0 8px rgba(255,193,7,0.4); }
+    .final-grid .v.acc-val     { text-shadow: 0 0 10px #bff; }
+
+    .final-score {
+      font-size: 38px;
+      margin-top: 15px;
+      font-weight: 900;
+      text-align: center;
+      color: #fff;
+      text-shadow: 0 0 15px #00e5ff, 0 0 30px #00ffff;
+    }
+
+    #fs_score {
+      font-size: 48px;
+      color: #00ffff;
+      text-shadow: 0 0 15px #00e5ff, 0 0 30px #00ffff, 0 0 45px #00ffff;
+    }
+
+    .final-hint {
+      margin-top: 10px;
+      color: rgba(255, 255, 255, .6);
+      font-size: 26px;
+    }
+  </style>
+</head>
+
+<body class="bg-dark text-light p-3 position-relative">
+
+  <!-- SOUND (BGM & SFX ported from Display) -->
+  <div id="soundGate" style="text-align: center; margin-bottom: 15px;">
+    <button id="btnEnableSound" style="background:#0b5ed7; color:#fff; border:1px solid #7ffcff; border-radius:8px; padding:10px 18px; font-weight:bold; cursor:pointer; width:100%; box-shadow: 0 4px 10px rgba(0,0,0,0.5);">🔊 CHẠM VÀO ĐÂY ĐỂ BẬT ÂM THANH</button>
+  </div>
+  <audio id="sfxTick" preload="auto" src="/static/sfx/tick.mp3"></audio>
+  <audio id="sfxBoom" preload="auto" src="/static/sfx/boom.mp3"></audio>
+  <audio id="bgmSoft" preload="auto" src="/static/sfx/bgm_soft.mp3" loop></audio>
+
+  <div class="container-fluid" style="max-width: 600px; padding:0;"></div>
+  <div class="dynamic-bg-layer" id="dynamicBgLayer"></div>
+  <div class="player-wrap">
+    <div id="waitingOverlay" class="waiting-overlay" style="display:none;">
+      <div class="waiting-text" id="waitingText"></div>
+    </div>
+
+
+    <!-- ===== PLAY SCREEN (câu hỏi) ===== -->
+    <div id="playScreen">
+      <!-- TOP BAR: name + question number -->
+      <div class="player-topbar">
+        <div class="player-name" id="playerName">Tên: ---</div>
+        <div class="player-qno" id="playerQNo">Bạn đang trả lời Câu hỏi số --</div>
+      </div>
+
+      <!-- Timer + status (giữ layout cũ) -->
+      <div class="player-status">
+        <div class="player-timer" id="timer">--</div>
+        <div class="player-state" id="stateText"> Chào mừng Anh/Chị đã tham gia. Đang chờ BTC bắt đầu...</div>
+      </div>
+
+      <!-- Question container (only when show_question=true) -->
+      <div id="questionBox" class="player-question-box hidden"></div>
+
+      <!-- Options -->
+      <div class="player-options" id="optionsBox">
+        <!-- Buttons injected by JS -->
+      </div>
+    </div>
+
+    <!-- ===== FINAL SCREEN (kết quả) ===== -->
+    <div id="finalScreen">
+      <div class="final-card">
+        <div class="final-title">🏁 BÀI THI ĐÃ KẾT THÚC</div>
+        <div class="final-sub" id="finalSub">Đang tổng hợp kết quả...</div>
+
+        <div class="final-grid" id="finalGrid" style="display:none;">
+          <div class="k">Tổng số câu hỏi</div>
+          <div class="v" id="fs_total">-</div>
+          <div class="k">Số câu đã trả lời</div>
+          <div class="v" id="fs_answered">-</div>
+
+          <div class="k">Đúng</div>
+          <div class="v correct-val" id="fs_correct">-</div>
+          <div class="k">Sai</div>
+          <div class="v wrong-val" id="fs_wrong">-</div>
+
+          <div class="k">Không trả lời</div>
+          <div class="v noanswer-val" id="fs_noanswer">-</div>
+          <div class="k">% đúng</div>
+          <div class="v acc-val" id="fs_acc">-</div>
+        </div>
+
+        <div class="final-score" id="fs_score_wrap" style="display:none;">
+          Tổng điểm: <span id="fs_score">-</span>
+        </div>
+
+        <div class="final-hint">Bạn có thể đóng trang này sau khi xem xong.</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Stats overlay (per-question / during running) -->
+  <div id="statsOverlay" class="stats-overlay hidden">
+    <div class="stats-card">
+      <div class="stats-title">THỐNG KÊ</div>
+      <div id="statsSummary" class="stats-summary"></div>
+      
+      <div class="mt-3">
+        <div class="stats-subtitle" style="font-size:16px; font-weight:700; color:var(--clr-primary); margin-bottom:8px; text-transform:uppercase; letter-spacing:1px; text-shadow:0 0 10px rgba(0,255,150,0.5);">THÀNH TÍCH CỦA BẠN</div>
+        <div id="playerPersonalStats" style="text-align:center; padding: 20px 15px; margin-top: 10px; background: rgba(0,0,0,0.45); border-radius: 14px; border: 1px solid rgba(255,255,255,0.15); box-shadow: 0 4px 15px rgba(0,0,0,0.3);">
+          <!-- Javascript injected -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Answer overlay -->
+  <div id="answerOverlay" class="answer-overlay hidden">
+    <div class="answer-card answer-3d answer-3d-green">
+      <div class="answer-title">ĐÁP ÁN ĐÚNG</div>
+      <div id="answerText" class="answer-text"></div>
+    </div>
+  </div>
+
+  <!-- WINNER overlay (per-question / toggle from Control) -->
+  <div id="winnerOverlay" class="winner-overlay hidden">
+    <div class="winner-title">
+      CHÚC MỪNG NGƯỜI CHƠI<br />TRẢ LỜI ĐÚNG VÀ NHANH NHẤT
+    </div>
+    <div class="winner-info-card" id="winnerInfoCard">
+      <!-- Rendered by JS -->
+    </div>
+  </div>
+
+  <!-- Result notice overlay (Chính xác / Không chính xác) -->
+  <div id="resultNoticeOverlay" class="result-notice-overlay" style="display:none;">
+    <div id="resultNoticeBox" class="result-notice-box correct">
+      <div id="resultNoticeText" class="result-notice-text">Chính xác</div>
+    </div>
+  </div>
+
+  <script>
+    let playerName =
+      localStorage.getItem("quiz_player_name") || "";
+
+    const socket = io({ transports: ['websocket', 'polling'] });
+
+    let lastEnterRoomTime = 0;
+    function safeEmitEnterRoom() {
+      const now = Date.now();
+      if (now - lastEnterRoomTime < 1500) return;
+      lastEnterRoomTime = now;
+      try {
+        if (roomCode && playerId && !isEnded) {
+          socket.emit("player_enter_room", { room_code: roomCode, player_id: playerId });
+        }
+      } catch (e) { }
+    }
+
+    socket.on("connect", () => {
+      safeEmitEnterRoom();
+    });
+
+    // --- Result notice config ---
+    const RESULT_NOTICE_DURATION_MS = 3500; // popup hiển thị lâu hơn (sân khấu)
+    let __audioCtx = null;
+
+    function ensureAudio() {
+      try {
+        if (!__audioCtx) {
+          const AC = window.AudioContext || window.webkitAudioContext;
+          if (!AC) return null;
+          __audioCtx = new AC();
+        }
+        if (__audioCtx.state === "suspended") {
+          __audioCtx.resume().catch(() => { });
+        }
+        return __audioCtx;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    // iOS/Chrome policies: phải "unlock" audio bằng tương tác người dùng
+    function unlockAudioOnce() {
+      const ctx = ensureAudio();
+      if (!ctx) return;
+      // play a silent blip to unlock
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      g.gain.value = 0.00001;
+      o.connect(g); g.connect(ctx.destination);
+      o.start();
+      o.stop(ctx.currentTime + 0.02);
+      document.removeEventListener("touchstart", unlockAudioOnce, true);
+      document.removeEventListener("click", unlockAudioOnce, true);
+    }
+    document.addEventListener("touchstart", unlockAudioOnce, true);
+    document.addEventListener("click", unlockAudioOnce, true);
+
+    function playTone(freq, durationMs, type) {
+      const ctx = ensureAudio();
+      if (!ctx) return;
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = type || "sine";
+      o.frequency.value = freq;
+      g.gain.value = 0.00001;
+
+      o.connect(g); g.connect(ctx.destination);
+
+      const now = ctx.currentTime;
+      // quick attack, decay
+      g.gain.exponentialRampToValueAtTime(0.22, now + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.00001, now + (durationMs / 1000.0));
+
+      o.start(now);
+      o.stop(now + (durationMs / 1000.0));
+    }
+
+    function playCorrectSound() {
+      // "ting": 2 nốt chime
+      playTone(880, 180, "triangle");
+      setTimeout(() => playTone(1320, 160, "triangle"), 90);
+    }
+    function playWrongSound() {
+      // "buzz": low + rough
+      playTone(120, 280, "sawtooth");
+      setTimeout(() => playTone(90, 260, "sawtooth"), 120);
+    }
+
+    let resultNoticeEnabled = false;
+    // --- Result notice per-question tracking ---
+    let __rn_hasAnswered = false;
+    let __rn_lastIsCorrect = null;
+    let __rn_shownThisQuestion = false;
+    let __rn_lastQIndex = null;
+    function __rn_resetForNewQuestion(qIndex) {
+      try { const ov = document.getElementById("resultNoticeOverlay"); if (ov) ov.style.display = "none"; } catch (e) { }
+      __rn_hasAnswered = false;
+      __rn_lastIsCorrect = null;
+      __rn_shownThisQuestion = false;
+      __rn_lastQIndex = (typeof qIndex === 'number') ? qIndex : null;
+    }
+
+
+
+    // ---------- Local storage: player identity ----------
+    function qs(name) {
+      const p = new URLSearchParams(window.location.search);
+      return (p.get(name) || "").toString();
+    }
+    const roomFromUrl = (qs("room") || "").trim().toUpperCase();
+    const playerIdFromUrl = (qs("player_id") || "").trim();
+
+    let roomCode = roomFromUrl || (localStorage.getItem("quiz_room_code") || "");
+    let playerId = playerIdFromUrl || (localStorage.getItem("quiz_player_id") || "");
+
+    if (roomCode) localStorage.setItem("quiz_room_code", roomCode);
+    if (playerId) localStorage.setItem("quiz_player_id", playerId);
+
+    // ---------- State ----------
+    let currentStartMs = null;
+    let currentDuration = 0;
+    let timerInterval = null;
+    let locked = false;
+    let showQuestion = false;
+    let isEnded = false;
+
+    function fmtPct(n) {
+      const x = Number(n || 0);
+      return x.toFixed(2).replace(".", ",") + "%";
+    }
+
+    function setTopbar(name, qno) {
+      document.getElementById("playerName").textContent = `Tên: ${name || "---"}`;
+      document.getElementById("playerQNo").textContent = `Bạn đang trả lời câu ${qno || "--/--"}`;
+    }
+
+    let isWinnerShowing = false;
+    function hideOverlays() {
+      document.getElementById("answerOverlay")?.classList.add("hidden");
+      document.getElementById("winnerOverlay")?.classList.add("hidden");
+      document.getElementById("statsOverlay")?.classList.add("hidden");
+      isWinnerShowing = false;
+    }
+
+    function setState(text, blinking = false) {
+      const el = document.getElementById("stateText");
+      el.textContent = text || "";
+      if (blinking) {
+        el.classList.add("text-blink-red");
+      } else {
+        el.classList.remove("text-blink-red");
+      }
+    }
+
+    function showResultNotice(isCorrect) {
+      if (isEnded) return;
+      const overlay = document.getElementById("resultNoticeOverlay");
+      const box = document.getElementById("resultNoticeBox");
+      const text = document.getElementById("resultNoticeText");
+      if (!overlay || !box || !text) return;
+      if (isCorrect) {
+        box.classList.remove("incorrect");
+        box.classList.add("correct");
+        text.textContent = "Chính xác";
+      } else {
+        box.classList.remove("correct");
+        box.classList.add("incorrect");
+        text.textContent = "Không chính xác";
+      }
+      overlay.style.display = "flex";
+      __rn_shownThisQuestion = true;
+      // sound cue
+      try { if (isCorrect) playCorrectSound(); else playWrongSound(); } catch (e) { }
+      // keep visible until next question
+      clearTimeout(window.__rn_to);
+    }
+
+    function setWaitingOverlay(nameFromState) {
+      const name = (nameFromState || playerName || "bạn").trim();
+
+      const box = document.getElementById("waitingOverlay");
+      const txt = document.getElementById("waitingText");
+      if (!box || !txt) return;
+
+      // 2 dòng (dùng <br>) + có class để CSS animation áp vào từng dòng nếu anh đã set
+      txt.innerHTML = `
+    <div class="welcome-wrap">
+      <div class="welcome-line">Chào mừng <span class="player-name-inline">${name}</span> đã tham gia.</div>
+      <div class="waiting-line">Đang chờ BTC bắt đầu...</div>
+    </div>
+  `;
+      box.style.display = "flex";
+    }
+
+    function hideWaitingOverlay() {
+      const box = document.getElementById("waitingOverlay");
+      const txt = document.getElementById("waitingText");
+      if (box) box.style.display = "none";
+      if (txt) txt.innerHTML = "";
+    }
+
+    function showPlayScreen() {
+      const p = document.getElementById("playScreen");
+      const f = document.getElementById("finalScreen");
+      if (p) p.style.display = "block";
+      if (f) f.style.display = "none";
+    }
+
+    function showFinalScreen(waitingText) {
+      isEnded = true;
+      clearTimer();
+      document.getElementById("timer").textContent = "--";
+      setLockedUI(true);
+
+      // hide per-question result notice when showing final screen
+      try {
+        const ov = document.getElementById("resultNoticeOverlay");
+        if (ov) ov.style.display = "none";
+      } catch (e) { }
+
+      const p = document.getElementById("playScreen");
+      const f = document.getElementById("finalScreen");
+      if (p) p.style.display = "none";
+      if (f) f.style.display = "block";
+
+      const sub = document.getElementById("finalSub");
+      if (sub) sub.textContent = waitingText || "Đang tổng hợp kết quả...";
+    }
+
+    function fillFinalStats(stats) {
+      const name = stats?.name || "";
+      const totalQ = stats?.total_questions ?? 0;
+      const answered = stats?.answered ?? 0;
+      const correct = stats?.correct ?? 0;
+      const wrong = stats?.wrong ?? 0;
+      const noAnswer = stats?.no_answer ?? 0;
+      const acc = stats?.accuracy_pct ?? 0;
+      const score = stats?.score ?? 0;
+
+      document.getElementById("finalSub").innerHTML = `Kết quả của bạn: <b>${name}</b>`;
+      document.getElementById("finalGrid").style.display = "grid";
+
+      document.getElementById("fs_total").textContent = totalQ;
+      document.getElementById("fs_answered").textContent = answered;
+      document.getElementById("fs_correct").textContent = correct;
+      document.getElementById("fs_wrong").textContent = wrong;
+      document.getElementById("fs_noanswer").textContent = noAnswer;
+      document.getElementById("fs_acc").textContent = fmtPct(acc);
+
+      document.getElementById("fs_score_wrap").style.display = "block";
+      document.getElementById("fs_score").textContent = score;
+    }
+
+    function startTimer(startMs, duration) {
+      currentStartMs = startMs;
+      currentDuration = duration;
+
+      if (timerInterval) clearInterval(timerInterval);
+      timerInterval = setInterval(() => {
+        if (!currentStartMs) return;
+        const now = Date.now();
+        const elapsed = Math.max(0, now - currentStartMs);
+        const remain = Math.max(0, currentDuration * 1000 - elapsed);
+        const sec = Math.ceil(remain / 1000);
+        document.getElementById("timer").textContent = sec.toString();
+        if (remain <= 0) {
+          document.getElementById("timer").textContent = "0";
+          stopBgm();
+          stopTick();
+          if (!boomPlayed) {
+            boomPlayed = true;
+            playBoom();
+          }
+        } else if (remain <= 10000) {
+          applyCountdownMix();
+          startTick();
+        } else {
+          applyNormalMix();
+          if (tickPlaying) stopTick();
+        }
+      }, 120);
+    }
+
+    function clearTimer() {
+      if (timerInterval) clearInterval(timerInterval);
+      timerInterval = null;
+      stopTick();
+    }
+
+    function renderPlayerMedia(url) {
+      if (!url) return '';
+      const lower = url.toLowerCase();
+      if (lower.endsWith('.mp4') || lower.endsWith('.webm') || lower.endsWith('.ogg')) {
+        return `<video src="${url}" autoplay playsinline controls style="width:100%; border-radius:12px;"></video>`;
+      }
+      return `<img src="${url}" alt=""/>`;
+    }
+
+    function renderQuestionBox(text, imageUrl) {
+      const qb = document.getElementById("questionBox");
+      if (!qb) return;
+      if (showQuestion && (text || imageUrl)) {
+        qb.classList.remove("hidden");
+        let htmlObj = text || "";
+        if (imageUrl) {
+          htmlObj = `
+            <div class="q-wrapper has-image">
+              <div class="img-part">${renderPlayerMedia(imageUrl)}</div>
+              <div class="text-part">${htmlObj}</div>
+            </div>
+          `;
+        }
+        qb.innerHTML = htmlObj;
+      } else {
+        qb.classList.add("hidden");
+        qb.innerHTML = "";
+      }
+    }
+
+    function renderOptions(options, selectedIndex) {
+      const box = document.getElementById("optionsBox");
+      box.innerHTML = "";
+
+      // V8.1: làm mờ các phương án khác khi đã chọn 1 phương án
+      box.classList.toggle("has-selected", (typeof selectedIndex === "number" && selectedIndex >= 0));
+
+      if (!options || options.length !== 4) {
+        box.innerHTML = `<div class="muted">Chưa có phương án.</div>`;
+        return;
+      }
+
+      options.forEach((txt, idx) => {
+        const btn = document.createElement("button");
+        btn.className = "opt-btn";
+        btn.type = "button";
+        btn.textContent = txt; // không hiển thị A/B/C/D theo yêu cầu
+
+        // restore selected after refresh (V8)
+        if (typeof selectedIndex === "number" && selectedIndex >= 0 && idx === selectedIndex) {
+          btn.classList.add("selected");
+        }
+
+        btn.disabled = locked || isEnded;
+
+        btn.addEventListener("click", () => {
+          if (locked || isEnded) return;
+
+          // clear others then mark selected
+          box.querySelectorAll(".opt-btn").forEach(b => b.classList.remove("selected"));
+          btn.classList.add("selected");
+          box.classList.add("has-selected");
+
+          socket.emit("player_submit_answer", {
+            room_code: roomCode,
+            player_id: playerId,
+            selected_index: idx
+          });
+        });
+
+        box.appendChild(btn);
+      });
+    }
+
+    function setLockedUI(val) {
+      locked = !!val;
+      const btns = document.querySelectorAll(".opt-btn");
+      btns.forEach(b => b.disabled = locked || isEnded);
+    }
+
+    // ---------- Connect ----------
+    if (!roomCode || !playerId) {
+      setTopbar("", "");
+      setState("Thiếu thông tin. Vui lòng vào từ trang Join.");
+      renderOptions([]);
+    } else {
+      safeEmitEnterRoom();
+    }
+
+    // ---------- Socket handlers ----------
+    socket.on("player_state", (st) => {
+      if (!st) return;
+      setTopbar(st.player_name || playerName || "", "--/--");
+
+      // Nếu đã ended thì KHÔNG render lại câu hỏi cuối
+      if (isEnded || st.status === "ended") {
+        isEnded = true;
+        showFinalScreen("Bài thi đã kết thúc. Đang tổng hợp kết quả...");
+        // fallback request final stats (in case missed push)
+        if (roomCode && playerId) {
+          try { socket.emit("player_request_final_stats", { room_code: roomCode, player_id: playerId }); } catch (e) { }
+        }
+        return;
+      }
+
+      if (st.status !== "running") {
+        showPlayScreen();
+        setTopbar(st.player_name || "", "--/--");
+        setState(""); // không cần text nhỏ ở góc nữa
+        setWaitingOverlay(st.player_name);
+
+        document.getElementById("timer").textContent = "--";
+        renderQuestionBox("", null);
+        stopBgm();
+        stopTick();
+        renderOptions([]);
+        setLockedUI(true);
+
+        // hide per-question result notice when showing final screen
+        try {
+          const ov = document.getElementById("resultNoticeOverlay");
+          if (ov) ov.style.display = "none";
+        } catch (e) { }
+        return;
+      }
+
+      // running
+      isEnded = false;
+      // detect new question
+      if (typeof st.q_index === "number") {
+        if (__rn_lastQIndex === null) __rn_lastQIndex = st.q_index;
+        if (st.q_index !== __rn_lastQIndex) {
+          __rn_resetForNewQuestion(st.q_index);
+        }
+      }
+
+      hideOverlays();
+      showPlayScreen();
+      hideWaitingOverlay();
+
+
+      showQuestion = !!st.show_question;
+
+      // sync result notice flag from server state (important for mobile/refresh)
+      if (typeof st.result_notice !== "undefined") {
+        resultNoticeEnabled = !!st.result_notice;
+      }
+      if (st.answered_current) {
+        __rn_hasAnswered = true;
+      }
+      if (typeof st.last_is_correct !== "undefined" && st.last_is_correct !== null) {
+        __rn_lastIsCorrect = (st.last_is_correct == 1 || st.last_is_correct === true);
+      }
+
+      setTopbar(st.player_name || "", (st.total_questions ? `${(st.q_number || (st.q_index + 1))}/${st.total_questions}` : (st.q_number || (st.q_index + 1))));
+      setState((st.locked && !st.answered_current) ? "HẾT GIỜ! Chờ BTC chuyển câu..." : (st.answered_current ? "Đã ghi nhận đáp án." : "Đang thi..."), (st.locked && !st.answered_current));
+
+      startTimer(st.start_ms, st.duration);
+      resetQuestionSoundFlags();
+      startBgm();
+      renderQuestionBox(st.question_text || "", st.image_url);
+      renderOptions(st.options || [], st.selected_index);
+      setLockedUI(!!st.locked);
+
+      // Nếu hệ thống chuyển sang locked (hết giờ) và người chơi đã trả lời, nhưng chưa kịp hiện popup
+      if (resultNoticeEnabled && st.time_up && st.answered_current && !__rn_shownThisQuestion && __rn_lastIsCorrect !== null) {
+        showResultNotice(__rn_lastIsCorrect);
+      }
+    });
+
+    socket.on("question_started", (st) => {
+      // reset notice state for new question
+      __rn_resetForNewQuestion((st && typeof st.q_index === "number") ? st.q_index : null);
+
+      hideOverlays();
+      hideWaitingOverlay(); // ⬅️ thêm dòng này
+      if (!roomCode || !playerId) return;
+      if (isEnded) return;
+      safeEmitEnterRoom();
+    });
+
+
+    socket.on("time_up", () => {
+      if (isEnded) return;
+      setState("HẾT GIỜ câu này! Vui lòng chờ BTC chuyển câu tiếp theo...", true);
+      setLockedUI(true);
+
+      // Niếu đã trả lời nhưng chưa hiện kết quả (refresh/lag) -> hiện ngay khi hết giờ
+      if (resultNoticeEnabled && __rn_hasAnswered && !__rn_shownThisQuestion && __rn_lastIsCorrect !== null) {
+        showResultNotice(__rn_lastIsCorrect);
+      }
+    });
+
+    socket.on("quiz_ended", () => {
+      // stop all audio
+      stopBgm();
+      stopTick();
+      clearTimer();
+      isEnded = true;
+      // request final stats proactively
+      if (roomCode && playerId) {
+        try { socket.emit("player_request_final_stats", { room_code: roomCode, player_id: playerId }); } catch (e) { }
+      }
+      // chuyển ngay sang màn hình kết quả riêng, không để lại câu cuối
+      showFinalScreen("Bài thi đã kết thúc. Đang tổng hợp kết quả...");
+    });
+
+    socket.on("answer_ack", (a) => {
+      if (isEnded) return;
+      if (!a) return;
+      if (a.ok) {
+        __rn_hasAnswered = true;
+        if (typeof a.is_correct !== "undefined") __rn_lastIsCorrect = !!a.is_correct;
+        setLockedUI(true);
+
+        // hide per-question result notice when showing final screen
+        try {
+          const ov = document.getElementById("resultNoticeOverlay");
+          if (ov) ov.style.display = "none";
+        } catch (e) { }
+        setState("Đã ghi nhận đáp án.");
+        // Chỉ lưu kết quả; KHÔNG hiện ngay (chỉ hiện khi hết giờ).
+        return;
+      }
+      // V8: server có thể trả reject khi hết giờ hoặc sai trạng thái
+      if (a.locked) {
+        setLockedUI(true);
+
+        // hide per-question result notice when showing final screen
+        try {
+          const ov = document.getElementById("resultNoticeOverlay");
+          if (ov) ov.style.display = "none";
+        } catch (e) { }
+      }
+      setState(a.msg || "Không thể ghi nhận đáp án (có thể đã hết giờ câu này).");
+    });
+
+    // Reveal/hide answer
+    socket.on("reveal_answer", (a) => {
+      if (isEnded) return;
+      try { const ov = document.getElementById("resultNoticeOverlay"); if (ov) ov.style.display = "none"; } catch (e) { }
+      document.getElementById("winnerOverlay")?.classList.add("hidden");
+      document.getElementById("answerText").textContent = a?.text || "";
+      document.getElementById("answerOverlay")?.classList.remove("hidden");
+    });
+
+    socket.on("hide_answer", () => {
+      document.getElementById("answerOverlay")?.classList.add("hidden");
+    });
+
+    // WINNER OVERLAY LOGIC
+    function triggerFireworks() {
+      if (typeof confetti !== "function") return;
+      var duration = 5 * 1000;
+      var animationEnd = Date.now() + duration;
+      var defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 10000 };
+
+      function randomInRange(min, max) {
+        return Math.random() * (max - min) + min;
+      }
+
+      var interval = setInterval(function () {
+        var timeLeft = animationEnd - Date.now();
+
+        if (timeLeft <= 0) {
+          return clearInterval(interval);
+        }
+
+        var particleCount = 50 * (timeLeft / duration);
+        confetti(Object.assign({}, defaults, { particleCount, origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 } }));
+        confetti(Object.assign({}, defaults, { particleCount, origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 } }));
+      }, 250);
+    }
+
+    function renderWinnerOverlay(payload) {
+      const st = payload?.stats;
+      const wc = document.getElementById("winnerInfoCard");
+
+      if (!st) {
+        wc.innerHTML = `<div class="w-name">Chưa có người xuất sắc</div>`;
+      } else {
+        if (st.fastest_correct || st.fastest_correct_name) {
+          const wName = st.fastest_correct?.name || st.fastest_correct_name || "Unknown";
+          const wUnit = st.fastest_correct?.unit || st.fastest_correct_unit || "---";
+          const wPos = st.fastest_correct?.position || st.fastest_correct_position || "---";
+          const ms = st.fastest_correct?.elapsed_ms || st.fastest_correct_elapsed_ms || 0;
+          const wTime = (ms / 1000).toFixed(2);
+
+          wc.innerHTML = `
+            <div class="w-name">${wName}</div>
+            <div class="w-details">${wPos} - ${wUnit}</div>
+            <div class="w-time"><i class="fa fa-clock-o"></i> ${wTime}s</div>
+          `;
+        } else {
+          wc.innerHTML = `<div class="w-name" style="color:#aaa;">Không có ai trả lời đúng</div><div class="w-details">Rất tiếc!</div>`;
+        }
+      }
+    }
+
+    socket.on("show_winner", (payload) => {
+      try { const ov = document.getElementById("resultNoticeOverlay"); if (ov) ov.style.display = "none"; } catch (e) { }
+      document.getElementById("answerOverlay")?.classList.add("hidden");
+      const winId = document.getElementById("winnerOverlay");
+      if (winId) {
+        winId.classList.remove("hidden");
+        renderWinnerOverlay(payload);
+        if (!isWinnerShowing) {
+          triggerFireworks();
+          isWinnerShowing = true;
+        }
+      }
+    });
+
+    socket.on("hide_winner", () => {
+      const winId = document.getElementById("winnerOverlay");
+      if (winId) {
+        winId.classList.add("hidden");
+        isWinnerShowing = false;
+      }
+    });
+
+    socket.on("show_stats", (payload) => {
+      if (isEnded) return;
+      hideOverlays();
+      try { const ov = document.getElementById("resultNoticeOverlay"); if (ov) ov.style.display = "none"; } catch (e) { }
+
+      const st = payload?.stats;
+      const sum = document.getElementById("statsSummary");
+      if (!st) {
+        sum.textContent = "Chưa có dữ liệu thống kê.";
+      } else {
+        const totalPlayers = (st.players_total ?? st.total_players ?? 0);
+        let fastest = "Chưa có";
+        if (st.fastest_correct) {
+          fastest = `${st.fastest_correct.name} (${st.fastest_correct.unit}) - ${(st.fastest_correct.elapsed_ms / 1000).toFixed(2)}s`;
+        }
+        sum.innerHTML = `
+          <div class="line">Tổng người chơi: <b>${totalPlayers}</b></div>
+          <div class="line">Đã trả lời: <b>${st.answered ?? 0}</b></div>
+          <div class="line">Đúng: <b class="ok">${st.correct ?? 0}</b> | Sai: <b class="bad">${st.wrong ?? 0}</b> | Không trả lời: <b>${st.no_answer ?? 0}</b></div>
+          <div class="line">Nhanh nhất (đúng): <b class="info">${fastest}</b></div>
+        `;
+      }
+
+      const scoreboard = payload?.scoreboard || [];
+      const pers = document.getElementById("playerPersonalStats");
+      let myRank = -1;
+      let myScore = 0;
+
+      for (let i = 0; i < scoreboard.length; i++) {
+        if (scoreboard[i].player_id === playerId) {
+          myRank = i + 1;
+          myScore = scoreboard[i].score || 0;
+          break;
+        }
+      }
+
+      if (myRank > 0) {
+        let text = "";
+        let color = "#fff";
+        const total = scoreboard.length || 1;
+        const pct = myRank / total;
+
+        if (myRank <= 3) {
+          text = "Đỉnh của chóp! Bạn đang nằm trong Top 3 xuất sắc nhất phòng! 🚀";
+          color = "#ffd700"; // gold
+        } else if (pct <= 0.2) {
+          text = "Khét lẹt! Phong độ rực cháy anh em ơi! 🔥";
+          color = "#00e676"; // green
+        } else if (pct <= 0.5) {
+          text = "Tốt lắm! Bạn đã lọt vào nửa trên của bảng xếp hạng rồi! Cứ thế phát huy! 💪";
+          color = "#40c4ff"; // light blue
+        } else {
+          text = "Cố gắng lên nào! Đừng nản, cơ hội bứt phá vẫn còn chờ ở phía trước! 🏃‍♂️";
+          color = "#ff8a65"; // light orange
+        }
+
+        pers.innerHTML = `
+          <div style="font-size:15px; color:#aaa; margin-bottom:4px; text-transform:uppercase; letter-spacing:1px;">Hạng hiện tại</div>
+          <div style="font-size:42px; font-weight:900; color:${color}; margin-bottom:12px; text-shadow:0 0 10px ${color}, 0 0 20px ${color};">${myRank} <span style="font-size:24px; color:#777; font-weight:700; text-shadow:none;">/ ${total}</span></div>
+          <div style="font-size:15px; color:#aaa; margin-bottom:4px; text-transform:uppercase; letter-spacing:1px;">Tổng điểm</div>
+          <div style="font-size:40px; font-weight:900; color:${color}; margin-bottom:18px; text-shadow:0 0 10px ${color}, 0 0 20px ${color};">${myScore}</div>
+          <div style="font-size:16px; font-style:italic; color:${color}; margin-top:10px; line-height:1.45; word-wrap:break-word; text-shadow:0 0 5px ${color};">"${text}"</div>
+        `;
+      } else {
+        pers.innerHTML = `<div style="color:#aaa;">Chưa ghi nhận điểm số của bạn. Hãy cố gắng hết mình nhé!</div>`;
+      }
+
+      document.getElementById("statsOverlay")?.classList.remove("hidden");
+    });
+
+    socket.on("hide_stats", () => {
+      document.getElementById("statsOverlay")?.classList.add("hidden");
+    });
+
+    socket.on("player_config", (cfg) => {
+      if (cfg && typeof cfg.show_question !== "undefined") {
+        showQuestion = !!cfg.show_question;
+        // nếu đang playScreen thì render lại box
+        // (không động nếu đã ended)
+        if (!isEnded) {
+          const qb = document.getElementById("questionBox");
+          if (qb) {
+            if (showQuestion) qb.classList.remove("hidden");
+            else qb.classList.add("hidden");
+          }
+        }
+      }
+      if (cfg && typeof cfg.result_notice !== "undefined") { resultNoticeEnabled = !!cfg.result_notice; }
+    });
+
+    socket.on("player_final_stats", (stats) => {
+      try { const ov = document.getElementById("resultNoticeOverlay"); if (ov) ov.style.display = "none"; } catch (e) { }
+      showFinalScreen("Đang hiển thị kết quả...");
+      fillFinalStats(stats);
+    });
+
+    function showKicked(msg) {
+      try { stopTimer(); } catch (e) { }
+      try { setLockedUI(true); } catch (e) { }
+      try { isEnded = true; } catch (e) { }
+      try {
+        const wrap = document.createElement("div");
+        wrap.id = "kickedOverlay";
+        wrap.style.position = "fixed";
+        wrap.style.inset = "0";
+        wrap.style.zIndex = "99999";
+        wrap.style.background = "rgba(0,0,0,0.92)";
+        wrap.style.display = "flex";
+        wrap.style.alignItems = "center";
+        wrap.style.justifyContent = "center";
+        wrap.style.padding = "18px";
+        wrap.innerHTML = `
+        <div style="max-width:520px;width:100%;background:#111;border:1px solid #333;border-radius:14px;padding:18px;">
+          <div style="font-size:22px;font-weight:900;margin-bottom:10px;color:#ff6b6b;">Bạn đã bị xóa tên</div>
+          <div style="font-size:16px;line-height:1.35;color:#fff;opacity:0.92;margin-bottom:14px;">${msg || "Vui lòng tham gia lại theo hướng dẫn BTC."}</div>
+          <div style="font-size:13px;opacity:0.7;margin-bottom:14px;">Bạn sẽ được chuyển về màn hình tham gia. Nếu đang mở nhiều tab, hãy đóng tab cũ để tránh nhầm lẫn.</div>
+          <button id="btnBackJoin" style="width:100%;padding:12px;border-radius:12px;border:none;background:#00c853;color:#000;font-weight:900;cursor:pointer;">VỀ MÀN THAM GIA</button>
+        </div>
+      `;
+        document.body.appendChild(wrap);
+        document.getElementById("btnBackJoin").onclick = () => {
+          try { localStorage.removeItem("quiz_player_id"); } catch (e) { }
+          try { sessionStorage.setItem("quiz_kicked", "1"); } catch (e) { }
+          window.location.href = "/player_join?room=" + encodeURIComponent(roomCode || "");
+        };
+        // auto redirect after a short delay
+        setTimeout(() => { try { document.getElementById("btnBackJoin").click(); } catch (e) { } }, 1200);
+      } catch (e) { }
+      try { socket.disconnect(); } catch (e) { }
+    }
+
+    socket.on("player_kicked", (p) => {
+      try {
+        if (!p) return;
+        if (p.room_code && roomCode && (p.room_code !== roomCode)) return;
+        
+        stopBgm();
+        stopTick();
+        showKicked(p.msg || "Vui lòng tham gia lại theo hướng dẫn BTC.");
+      } catch (e) { }
+    });
+
+  </script>
+  <script>
+    // --- Audio Logic ported from Display ---
+    const btnEnableSound = document.getElementById("btnEnableSound");
+    const sfxTick = document.getElementById("sfxTick");
+    const sfxBoom = document.getElementById("sfxBoom");
+    const bgmSoft = document.getElementById("bgmSoft");
+
+    let soundEnabled = false;
+    let tickPlaying = false;
+    let boomPlayed = false;
+
+    // Default volumes
+    const BGM_VOL_NORMAL = 0.18;
+    const BGM_VOL_LOW = 0.07;
+    const TICK_VOL_NORMAL = 0.45;
+    const TICK_VOL_HIGH = 0.90;
+    const BOOM_VOL = 0.40;
+
+    if (sfxTick) sfxTick.volume = TICK_VOL_NORMAL;
+    if (sfxBoom) sfxBoom.volume = BOOM_VOL;
+    if (bgmSoft) bgmSoft.volume = BGM_VOL_NORMAL;
+
+    function applyNormalMix() {
+      if (bgmSoft) bgmSoft.volume = BGM_VOL_NORMAL;
+      if (sfxTick) sfxTick.volume = TICK_VOL_NORMAL;
+    }
+    function applyCountdownMix() {
+      if (bgmSoft) bgmSoft.volume = BGM_VOL_LOW;
+      if (sfxTick) sfxTick.volume = TICK_VOL_HIGH;
+    }
+
+    async function unlockSoundOnce() {
+      try {
+        if (sfxTick) {
+          sfxTick.loop = true;
+          await sfxTick.play();
+          sfxTick.pause();
+          sfxTick.currentTime = 0;
+          sfxTick.loop = false;
+        }
+        if (bgmSoft) {
+          await bgmSoft.play();
+          bgmSoft.pause();
+          bgmSoft.currentTime = 0;
+        }
+        soundEnabled = true;
+        document.getElementById("soundGate").style.display = "none";
+      } catch (e) {
+        soundEnabled = false;
+      }
+    }
+
+    if (btnEnableSound) {
+      btnEnableSound.addEventListener("click", () => {
+        unlockSoundOnce();
+        // Also unlock the Web Audio API context for ting/buzz
+        unlockAudioOnce();
+      });
+    }
+
+    function resetQuestionSoundFlags() {
+      boomPlayed = false;
+      stopTick();
+      applyNormalMix();
+    }
+
+    function startTick() {
+      if (!soundEnabled || !sfxTick) return;
+      if (tickPlaying) return;
+      tickPlaying = true;
+      try {
+        sfxTick.loop = true;
+        sfxTick.currentTime = 0;
+        const p = sfxTick.play();
+        if (p && typeof p.catch === "function") p.catch(() => { tickPlaying = false; });
+      } catch (e) { tickPlaying = false; }
+    }
+
+    function stopTick() {
+      if (!sfxTick) { tickPlaying = false; return; }
+      try {
+        sfxTick.pause();
+        sfxTick.currentTime = 0;
+      } catch (e) { }
+      tickPlaying = false;
+    }
+
+    function playBoom() {
+      if (!soundEnabled || !sfxBoom) return;
+      try {
+        sfxBoom.currentTime = 0;
+        const p = sfxBoom.play();
+        if (p && typeof p.catch === "function") p.catch(() => { });
+      } catch (e) { }
+    }
+
+    function startBgm() {
+      if (!soundEnabled || !bgmSoft) return;
+      try {
+        if (!bgmSoft.paused) return;
+        const p = bgmSoft.play();
+        if (p && typeof p.catch === "function") p.catch(() => { });
+      } catch (e) { }
+    }
+
+    function stopBgm() {
+      if (!bgmSoft) return;
+      try {
+        bgmSoft.pause();
+        bgmSoft.currentTime = 0;
+      } catch (e) { }
+    }
+    fetch('/api/bg/player')
+      .then(r => r.json())
+      .then(d => {
+        if (d && d.url) document.getElementById('dynamicBgLayer').style.backgroundImage = `url('${d.url}')`;
+      }).catch(e => console.log("No dynamic bg"));
+  </script>
+  {% include "_footer.html" %}
+
+</body>
+
+</html>

@@ -1,0 +1,1658 @@
+<!doctype html>
+<html lang="vi">
+
+<head>
+  <meta charset="utf-8" />
+  <title>Quiz Control</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+</head>
+
+<body class="bg-dark text-light">
+  <div class="container py-4">
+    <!-- STICKY HEADER WRAPPER -->
+    <div class="admin-sticky-header px-3 pb-0 rounded-bottom">
+      <div class="d-flex align-items-start justify-content-between gap-3 flex-wrap">
+        <div>
+          <h2 class="mb-1 text-white fw-bold">Control <span class="text-info">(BTC)</span></h2>
+          <div class="text-bright-hint small">Quản trị phòng thi, upload câu hỏi, điều khiển câu hỏi, xem thống kê realtime.</div>
+        </div>
+        <div class="text-end">
+          <a class="btn btn-outline-light btn-sm" href="/logout">Logout</a>
+        </div>
+      </div>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+      {% for category, message in messages %}
+      {% if category == 'new_room_code' %}
+      <script>window.SERVER_NEW_ROOM = "{{ message }}";</script>
+      {% else %}
+      <div class="alert alert-warning mt-3 white-pre">{{ message }}</div>
+      {% endif %}
+      {% endfor %}
+      {% endif %}
+      {% endwith %}
+
+      <div class="admin-tabs mt-3">
+        <button id="tabBtnSettings" class="admin-tab-btn active" onclick="switchAdminTab('tabSettings')">Cài đặt phòng thi</button>
+        <button id="tabBtnManagement" class="admin-tab-btn" onclick="switchAdminTab('tabManagement')">Quản lý bài thi</button>
+        <button id="tabBtnQuestions" class="admin-tab-btn" onclick="switchAdminTab('tabQuestions')">Quản lý đề thi</button>
+      </div>
+    </div>
+    <!-- END STICKY HEADER -->
+
+    <!-- ===== TAB 1: CÀI ĐẶT PHÒNG THI ===== -->
+    <div id="tabSettings" class="admin-tab-content active">
+
+    <div class="row g-4 mb-4">
+      <!-- Create room (Left side) -->
+      <div class="col-12 col-lg-6">
+        <div class="card bg-black border-secondary h-100">
+          <div class="card-body">
+            <h5 class="mb-2">Tạo phòng thi</h5>
+            <div class="text-bright-hint small mb-3">
+              Sau khi tạo, hệ thống sẽ sinh mã phòng và tự động nạp.
+            </div>
+            <form method="post" action="/room/create" class="row g-2 align-items-end">
+              <div class="col-12 col-md-5">
+                <label class="form-label text-bright-hint mb-1">Thời gian mỗi câu (Fallback)</label>
+                <div class="input-group">
+                  <input class="form-control" name="duration" type="number" min="3" value="20">
+                  <span class="input-group-text bg-secondary text-light border-secondary">giây</span>
+                </div>
+              </div>
+              <div class="col-12 col-md-7">
+                <button class="btn btn-success w-100 py-2">TẠO PHÒNG MỚI</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- Room selector (Right side) -->
+      <div class="col-12 col-lg-6">
+        <div class="card bg-black border-secondary h-100">
+          <div class="card-body">
+            <h5 class="mb-2">ROOM đang điều khiển</h5>
+            <div class="text-bright-hint small mb-3">
+              Nhập mã phòng đã có (hoặc tự động nạp sau khi tạo mới).
+            </div>
+            <div class="row g-2 align-items-end">
+              <div class="col-12 col-md-5">
+                <label class="form-label text-bright-hint mb-1">Mã ROOM</label>
+                <input id="roomInput" class="form-control text-uppercase font-monospace fw-bold"
+                  placeholder="VD: A1B2C3" maxlength="12">
+              </div>
+              <div class="col-12 col-md-7">
+                <button id="btnLoadRoom" class="btn btn-outline-warning w-100 py-2">NẠP ROOM NGAY</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Room Details Section -->
+    <div class="card bg-black border-secondary mb-4">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+          <div class="flex-grow-1">
+            <h5 class="mb-2">ROOM đang điều khiển</h5>
+
+
+            <div class="mt-3">
+              <h4 class="mb-1">ROOM: <span id="roomBadge" class="badge bg-secondary">---</span></h4>
+              <div class="text-bright-hint small">
+                Trạng thái: <b id="roomStatus">---</b> |
+                Số câu hỏi: <b id="qCount">0</b> |
+                Người chơi: <b id="playerCount">0</b>
+              </div>
+
+              <div class="mt-2 d-flex gap-2 flex-wrap">
+                <a id="btnOpenPlayerLink" class="btn btn-outline-info btn-sm" href="#" target="_blank">MỞ LINK NGƯỜI
+                  CHƠI</a>
+                <a id="btnOpenDisplayGate" class="btn btn-outline-success btn-sm" href="#" target="_blank">MỞ DISPLAY
+                  GATE</a>
+                <a id="btnOpenMCGate" class="btn btn-outline-warning btn-sm" href="#" target="_blank">MỞ MC GATE</a>
+              </div>
+
+              <div class="mt-2 small">
+                Link người chơi (LAN): <b class="text-light">http://{{ lan_ip }}:5000/player_join?room=<span
+                    id="roomCodeInline">ROOM</span></b><br />
+                Link Display Gate (LAN): <b class="text-light">http://{{ lan_ip }}:5000/display_gate?room=<span
+                    id="roomCodeInline2">ROOM</span></b><br />
+                Link MC Gate (LAN): <b class="text-light">http://{{ lan_ip }}:5000/mc_gate?room=<span
+                    id="roomCodeInline3">ROOM</span></b><br />
+                <span class="text-bright-hint">Mở Display bằng IP LAN (không mở localhost) để QR quét được.</span>
+              </div>
+            </div>
+          </div>
+
+          <div style="min-width:320px;">
+            <div class="small text-bright-hint fw-bold mb-2">Cài đặt phòng</div>
+
+            <div class="row g-4">
+              <!-- Set duration fallback -->
+              <div class="col-12 col-xl-6">
+                <form id="formSetDuration" onsubmit="return false;" class="row g-2 align-items-center">
+                  <div class="col-7">
+                    <input id="durationInput" class="form-control" name="duration" type="number" min="3" value="20">
+                  </div>
+                  <div class="col-5">
+                    <button class="btn btn-outline-info w-100" type="button">Set fallback</button>
+                  </div>
+                  <div class="col-12">
+                    <div class="small text-bright-hint mt-1">
+                      Thời gian thực tế lấy theo cột <b>“Thời gian”</b> trong Excel;<br>fallback dùng khi ô thời gian =
+                      0/rỗng.
+                    </div>
+                  </div>
+                </form>
+              </div>
+
+              <!-- Set display code -->
+              <div class="col-12 col-xl-6">
+                <form id="formSetDisplayCode" onsubmit="return false;" class="row g-2 align-items-center">
+                  <div class="col-7">
+                    <input id="displayCodeInput" class="form-control" name="display_code"
+                      placeholder="Display code (VD: 9999)">
+                  </div>
+                  <div class="col-5">
+                    <button class="btn btn-outline-info w-100" type="button">Set code</button>
+                  </div>
+                  <div class="col-12">
+                    <div class="small text-bright-hint mt-1">
+                      Display/MC code: <b id="displayCodeLabel">(chưa rõ)</b><br />
+                      Ai vào Display/MC phải nhập code này.
+                    </div>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <hr class="border-secondary my-3" />
+
+        <!-- Upload Excel -->
+        <div class="row g-3 mb-4">
+          <div class="col-12">
+            <h5 class="mb-2">Upload ngân hàng câu hỏi (Excel)</h5>
+            <div class="text-bright-hint small mb-2">
+              Cấu trúc cột: STT | Câu hỏi | Đáp án | Phương án A | Phương án B | Phương án C | Phương án D | Thời
+              gian | Link ảnh
+            </div>
+
+            <form id="uploadForm" method="post" action="#" enctype="multipart/form-data" class="row g-2">
+              <div class="col-12 col-md-8">
+                <input class="form-control" type="file" name="file" accept=".xlsx,.xlsm">
+              </div>
+              <div class="col-12 col-md-4">
+                <button class="btn btn-primary w-100" type="submit">UPLOAD</button>
+              </div>
+            </form>
+
+            <div class="mt-3 d-flex gap-2 flex-wrap">
+              <a id="btnExport" class="btn btn-outline-success btn-sm" href="#" target="_blank">Xuất kết quả Excel</a>
+              <form id="resetForm" method="post" action="#" class="m-0">
+                <button class="btn btn-outline-danger btn-sm" type="submit"
+                  onclick="return confirm('Reset phòng: xoá câu hỏi/người chơi/kết quả?')">Reset phòng</button>
+              </form>
+            </div>
+
+            <div class="mt-2 small text-bright-hint">
+              HƯỚNG DẪN: <br />
+              - "Hiện đáp án": chỉ bật sau khi hết giờ (tạo kịch tính).<br />
+              - "Hiện thống kê": chiếu đúng/sai/không trả lời + nhanh nhất + Top 10.<br />
+              - "Hiện/Ẩn QR": hỗ trợ người đến muộn quét vào.<br />
+              - "Player: Hiện/Ẩn câu hỏi": có thể bật/tắt realtime khi đang chơi.<br />
+              - "Player: Bật/Tắt thông báo kết quả": có thể bật/tắt realtime khi đang chơi.<br />
+              - "Display: Hiện/Ẩn chung cuộc": chỉ dùng sau khi kết thúc.
+            </div>
+          </div>
+        </div>
+      </div> <!-- End card-body -->
+    </div> <!-- End card -->
+
+    </div> <!-- End Tab 1: Cài đặt phòng thi -->
+
+    <!-- ===== TAB 2: QUẢN LÝ BÀI THI ===== -->
+    <div id="tabManagement" class="admin-tab-content">
+
+        <!-- Two-section layout -->
+        <div class="row g-3">
+
+          <!-- ===== I. CÀI ĐẶT BÀI THI ===== -->
+          <div class="col-12 col-lg-6">
+            <h5 class="mb-3 border-bottom border-secondary pb-2">⚙️ Cài đặt bài thi</h5>
+
+            <!-- Allowlist -->
+            <div class="d-flex gap-2 flex-wrap align-items-center mb-2">
+              <span class="text-bright-hint small">Kiểm soát người tham gia:</span>
+              <span id="allowlistBadge" class="badge bg-secondary">Chưa có danh sách</span>
+            </div>
+            <div class="row g-2 mb-2">
+              <div class="col-6">
+                <label class="btn btn-outline-light btn-sm w-100 mb-0 fw-bold" style="cursor:pointer">
+                  Tải lên Danh sách dự thi
+                  <input id="allowlistFileInput" type="file" accept=".xlsx,.xlsm" style="display:none"
+                    onchange="uploadAllowlist(this)">
+                </label>
+              </div>
+              <div class="col-6">
+                <form id="clearAllowlistForm" method="post" action="#" class="m-0">
+                  <button class="btn btn-outline-warning btn-sm w-100" type="submit"
+                    onclick="return confirm('Xóa danh sách kiểm soát? Sau khi xóa, mọi người đều vào được.')">Xóa
+                    Danh sách dự thi</button>
+                </form>
+              </div>
+            </div>
+
+            <!-- Allow outside allowlist toggle -->
+            <div class="row g-2 mb-2">
+              <div class="col-12">
+                <button id="btnToggleAllowOutside" class="btn btn-outline-info btn-sm w-100 fw-bold border border-2 text-info" type="button">
+                  Bật/Tắt: Người ngoài Danh sách tham gia
+                </button>
+              </div>
+            </div>
+
+            <!-- Quiz Mode toggles -->
+            <div class="row g-2 mb-2">
+              <div class="col-12">
+                <div class="p-2 border border-secondary rounded text-center" style="background:rgba(255,255,255,0.05)">
+                  <strong class="d-block mb-2 text-light" style="font-size:14px; text-transform:uppercase; letter-spacing:1px;">Chế độ thi (Chỉ chọn trước khi BẮT ĐẦU)</strong>
+                  <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="radio" name="quizMode" id="modeHostPaced" value="host_paced">
+                    <label class="form-check-label text-info fw-bold" for="modeHostPaced">Theo nhịp BTC</label>
+                  </div>
+                  <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="radio" name="quizMode" id="modeSelfPaced" value="self_paced">
+                    <label class="form-check-label text-warning fw-bold" for="modeSelfPaced">Tự chủ động tiến độ</label>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Player toggles -->
+            <div class="row g-2 mb-2">
+              <div class="col-6">
+                <button id="btnTogglePlayerQuestion" class="btn btn-outline-warning btn-sm w-100" type="button">
+                  Player: ẨN CÂU HỎI
+                </button>
+              </div>
+              <div class="col-6">
+                <button id="togglePlayerResultNotice"
+                  class="btn btn-outline-info btn-sm w-100 fw-bold border border-2 text-info" type="button">
+                  Player: TẮT THÔNG BÁO KẾT QUẢ
+                </button>
+              </div>
+            </div>
+
+            <!-- MC Toggles -->
+            <div class="row g-2 mb-2">
+              <div class="col-12">
+                <button id="btnToggleMCAnswer"
+                  class="btn btn-outline-info btn-sm w-100 fw-bold border border-2 text-info" type="button">
+                  MC: ẨN ĐÁP ÁN ĐÚNG
+                </button>
+              </div>
+            </div>
+
+            <!-- Display options & Final results -->
+            <div class="row g-2 mb-2">
+              <div class="col-6">
+                <button id="btnToggleOptsDisplay" class="btn btn-outline-success btn-sm w-100" type="button">
+                  Display: ẨN PHƯƠNG ÁN
+                </button>
+              </div>
+              <div class="col-6">
+                <button id="btnToggleFinal" class="btn btn-outline-light btn-sm w-100" type="button">
+                  Display: ẨN CHUNG CUỘC
+                </button>
+              </div>
+              <div class="col-12">
+                <div class="text-bright-hint small" id="displayOptsHint">Phương án trên Display: (chưa rõ)</div>
+              </div>
+            </div>
+
+            <!-- Lock room -->
+            <div class="row g-2">
+              <div class="col-12">
+                <button id="btnToggleLock" class="btn btn-warning text-dark btn-sm w-100 fw-bold" type="button">
+                  Khóa phòng thi
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- ===== II. ĐIỀU KHIỂN BÀI THI ===== -->
+          <div class="col-12 col-lg-6">
+            <h5 class="mb-3 border-bottom border-secondary pb-2">🎮 Điều khiển bài thi</h5>
+
+            <!-- QR -->
+            <div class="row g-2 mb-2">
+              <div class="col-6">
+                <button id="btnShowQR" class="btn btn-success btn-sm w-100">HIỆN QR</button>
+              </div>
+              <div class="col-6">
+                <button id="btnHideQR" class="btn btn-outline-success btn-sm w-100">ẨN QR</button>
+              </div>
+            </div>
+
+            <!-- DS Tham Gia -->
+            <div class="row g-2 mb-2">
+              <div class="col-6">
+                <button id="btnShowPlayerList" class="btn btn-danger btn-sm w-100">HIỆN DS THAM GIA</button>
+              </div>
+              <div class="col-6">
+                <button id="btnHidePlayerList" class="btn btn-outline-danger btn-sm w-100">ẨN DS THAM GIA</button>
+              </div>
+            </div>
+
+            <!-- DS Chưa Tham Gia -->
+            <div class="row g-2 mb-2">
+              <div class="col-6">
+                <button id="btnShowNotJoined" class="btn btn-info btn-sm w-100">HIỆN DS CHƯA THAM GIA</button>
+              </div>
+              <div class="col-6">
+                <button id="btnHideNotJoined" class="btn btn-outline-info btn-sm w-100">ẨN DS CHƯA THAM GIA</button>
+              </div>
+            </div>
+
+            <!-- Đáp án -->
+            <div class="row g-2 mb-2">
+              <div class="col-6">
+                <button id="btnReveal" class="btn btn-info btn-sm w-100">HIỆN ĐÁP ÁN</button>
+              </div>
+              <div class="col-6">
+                <button id="btnHideAnswer" class="btn btn-outline-info btn-sm w-100">ẨN ĐÁP ÁN</button>
+              </div>
+            </div>
+
+            <!-- Thống kê -->
+            <div class="row g-2 mb-2">
+              <div class="col-6">
+                <button id="btnShowStats" class="btn btn-primary btn-sm w-100">HIỆN THỐNG KÊ</button>
+              </div>
+              <div class="col-6">
+                <button id="btnHideStats" class="btn btn-outline-primary btn-sm w-100">ẨN THỐNG KÊ</button>
+              </div>
+            </div>
+
+            <!-- Chúc mừng nhanh nhất -->
+            <div class="row g-2 mb-3">
+              <div class="col-6">
+                <button id="btnShowWinner" class="btn btn-warning text-dark btn-sm w-100">HIỆN CHÚC MỪNG</button>
+              </div>
+              <div class="col-6">
+                <button id="btnHideWinner" class="btn btn-outline-warning btn-sm w-100">ẨN CHÚC MỪNG</button>
+              </div>
+            </div>
+
+            <!-- Bắt đầu / Câu tiếp / Kết thúc -->
+            <div class="row g-2">
+              <div class="col-4">
+                <button id="btnStart" class="btn btn-success btn-sm w-100 fw-bold">BẮT ĐẦU</button>
+              </div>
+              <div id="controlButtonsPanel" class="col-8 d-flex gap-2">
+                <button id="btnNext" class="btn btn-primary btn-sm w-100 fw-bold">CHUYỂN CÂU</button>
+                <button id="btnEnd" class="btn btn-danger btn-sm w-100 fw-bold">KẾT THÚC</button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <div id="toast" class="mt-3"></div>
+    <hr class="border-secondary my-3" />
+
+    <!-- Current question (Control view) -->
+    <div>
+      <h5 class="mb-2">Câu hỏi hiện tại (BTC xem cả đáp án)</h5>
+      <div id="currentQuestionBox" class="p-3 rounded border border-secondary bg-dark-subtle text-dark">
+        <div class="text-bright-hint">Chưa bắt đầu.</div>
+      </div>
+    </div>
+
+    <hr class="border-secondary my-3" />
+
+    <!-- Live stats -->
+    <div class="row g-3">
+      <div class="col-12 col-lg-6">
+        <h5 class="mb-2">Thống kê realtime (sau mỗi câu & trong lúc chạy)</h5>
+        <div id="statsBox" class="p-3 rounded border border-secondary bg-black">
+          <div class="text-bright-hint">Chưa có dữ liệu.</div>
+        </div>
+      </div>
+      <div class="col-12 col-lg-6">
+        <h5 class="mb-2">Top 10 hiện tại</h5>
+        <div class="table-responsive">
+          <table class="table table-dark table-striped table-hover align-middle">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Họ tên</th>
+                <th>Đơn vị</th>
+                <th>Điểm</th>
+              </tr>
+            </thead>
+            <tbody id="top10Body">
+              <tr>
+                <td colspan="4" class="text-bright-hint">Chưa có.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <hr class="border-secondary my-3" />
+
+    <!-- Player list -->
+    <div>
+      <h5 class="mb-2">Danh sách người chơi đã tham gia <span class="text-danger">: <span
+            id="joinedCountInline">0</span> người đã tham gia</span></h5>
+      <div class="table-responsive">
+        <table class="table table-dark table-striped table-hover align-middle">
+          <thead class="table-dark sticky-top">
+            <tr>
+              <th>#</th>
+              <th>Họ tên</th>
+              <th>Mã NV</th>
+              <th>Chức danh</th>
+              <th>Đơn vị</th>
+              <th>Tham gia lúc</th>
+              <th class="text-center" id="colDeleteOrScore">Xóa người chơi</th>
+            </tr>
+          </thead>
+          <tbody id="playerTableBody">
+            <tr>
+              <td colspan="7" class="text-bright-hint">Chưa có dữ liệu.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div> <!-- End Tab 2: Quản lý bài thi -->
+
+    <!-- ===== TAB 3: QUẢN LÝ ĐỀ THI ===== -->
+    <div id="tabQuestions" class="admin-tab-content">
+      <div class="row mb-3 align-items-center">
+        <div class="col-8">
+          <h5 class="mb-0">Danh sách câu hỏi trong ngân hàng đề</h5>
+        </div>
+        <div class="col-4 text-end">
+          <button class="btn btn-primary btn-sm fw-bold" onclick="openQuestionModal()"><i class="bi bi-plus-lg"></i> Thêm mới</button>
+        </div>
+      </div>
+      
+      <div class="table-responsive bg-black border border-secondary rounded p-3">
+        <table class="table table-dark table-striped table-hover align-middle mb-0">
+          <thead class="table-dark">
+            <tr>
+              <th width="50">STT</th>
+              <th>Câu hỏi</th>
+              <th>Đáp án đúng</th>
+              <th width="80" class="text-center">Thời gian</th>
+              <th width="150" class="text-center">Hành động</th>
+            </tr>
+          </thead>
+          <tbody id="questionsTableBody">
+            <tr>
+              <td colspan="5" class="text-bright-hint text-center">Đang tải dữ liệu...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div> <!-- End Tab 3 -->
+
+    <!-- Question Editor Modal -->
+    <div class="modal text-dark" id="modalQuestion" tabindex="-1" style="background: rgba(0,0,0,0.8);">
+      <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+          <form id="formQuestion" onsubmit="saveQuestion(event)">
+            <div class="modal-header">
+              <h5 class="modal-title fw-bold" id="modalQuestionTitle">Thêm câu hỏi mới</h5>
+              <button type="button" class="btn-close" onclick="closeQuestionModal()"></button>
+            </div>
+            <div class="modal-body">
+              <input type="hidden" id="q_id" name="id">
+              <div class="row g-3">
+                <div class="col-md-3">
+                  <label class="form-label fw-bold small">STT</label>
+                  <input type="text" class="form-control" id="q_stt" name="stt">
+                </div>
+                <div class="col-md-9">
+                  <label class="form-label fw-bold small">Thời gian (giây)</label>
+                  <input type="number" class="form-control" id="q_duration" name="duration_sec" value="20" min="5">
+                </div>
+                <div class="col-12">
+                  <label class="form-label fw-bold small">Nội dung câu hỏi <span class="text-danger">*</span></label>
+                  <textarea class="form-control" id="q_text" name="question_text" rows="3" required></textarea>
+                </div>
+                <div class="col-12">
+                  <label class="form-label fw-bold small">Đính kèm Hình ảnh/Video (Nhập URL hoặc Tải lên)</label>
+                  <div class="input-group mb-2">
+                    <span class="input-group-text">Link URL</span>
+                    <input type="text" class="form-control" id="q_image_url" name="image_url" placeholder="https://...">
+                  </div>
+                  <div class="input-group">
+                    <span class="input-group-text">Upload file</span>
+                    <input type="file" class="form-control" id="q_image_file" name="image_file" accept="image/*,video/*">
+                  </div>
+                </div>
+                <div class="col-12 mt-4">
+                  <label class="form-label fw-bold mb-3">Tùy chọn đáp án & Đánh dấu đáp án ĐÚNG <span class="text-danger">*</span></label>
+                  
+                  <div class="input-group mb-2">
+                    <div class="input-group-text"><input class="form-check-input mt-0" type="radio" name="correct" value="A" id="q_correct_A" required></div>
+                    <span class="input-group-text fw-bold">A</span>
+                    <input type="text" class="form-control" id="q_opt_a" name="opt_a" required>
+                  </div>
+                  
+                  <div class="input-group mb-2">
+                    <div class="input-group-text"><input class="form-check-input mt-0" type="radio" name="correct" value="B" id="q_correct_B"></div>
+                    <span class="input-group-text fw-bold">B</span>
+                    <input type="text" class="form-control" id="q_opt_b" name="opt_b" required>
+                  </div>
+                  
+                  <div class="input-group mb-2">
+                    <div class="input-group-text"><input class="form-check-input mt-0" type="radio" name="correct" value="C" id="q_correct_C"></div>
+                    <span class="input-group-text fw-bold">C</span>
+                    <input type="text" class="form-control" id="q_opt_c" name="opt_c" required>
+                  </div>
+                  
+                  <div class="input-group mb-2">
+                    <div class="input-group-text"><input class="form-check-input mt-0" type="radio" name="correct" value="D" id="q_correct_D"></div>
+                    <span class="input-group-text fw-bold">D</span>
+                    <input type="text" class="form-control" id="q_opt_d" name="opt_d" required>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" onclick="closeQuestionModal()">Hủy</button>
+              <button type="submit" class="btn btn-primary" id="btnSaveQuestion"><i class="bi bi-save"></i> Lưu lại</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+  </div> <!-- End container -->
+
+  <script>
+    // V9.6: Admin Tab Switcher Logic
+    function switchAdminTab(targetTabId) {
+      // Save state
+      localStorage.setItem('activeAdminTab', targetTabId);
+
+      // 1. Hide all tab contents
+      document.querySelectorAll('.admin-tab-content').forEach(el => {
+        el.classList.remove('active');
+        el.style.display = 'none';
+      });
+      // 2. Remove 'active' from all buttons
+      document.querySelectorAll('.admin-tab-btn').forEach(btn => {
+        btn.classList.remove('active');
+      });
+
+      // 3. Show target tab
+      const targetContent = document.getElementById(targetTabId);
+      if (targetContent) {
+        targetContent.style.display = 'block';
+        setTimeout(() => targetContent.classList.add('active'), 10);
+      }
+
+      // 4. Highlight target button
+      const clickSelector = `button[onclick="switchAdminTab('${targetTabId}')"]`;
+      const btn = document.querySelector(clickSelector);
+      if (btn) btn.classList.add('active');
+    }
+
+    // Restore tab state on load
+    document.addEventListener("DOMContentLoaded", () => {
+      const savedTab = localStorage.getItem('activeAdminTab');
+      if (savedTab) {
+        switchAdminTab(savedTab);
+      }
+      
+      // Auto-load questions periodically or immediately when room changes
+      if (roomCode) {
+         fetchQuestions();
+      }
+    });
+
+    // ----------------------------------------------------
+    // Tab 3: QUẢN LÝ ĐỀ THI - AJAX LOGIC
+    // ----------------------------------------------------
+    let loadedQuestions = [];
+
+    async function fetchQuestions() {
+      if (!roomCode) return;
+      try {
+        const res = await fetch(`/api/questions/${roomCode}`);
+        const result = await res.json();
+        if (result.status === "success") {
+          loadedQuestions = result.data;
+          renderQuestionsTable();
+        }
+      } catch (err) {
+        console.error("fetchQuestions error", err);
+      }
+    }
+
+    function renderQuestionsTable() {
+      const tbody = document.getElementById("questionsTableBody");
+      if (!tbody) return;
+      
+      if (!loadedQuestions || loadedQuestions.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" class="text-center text-bright-hint">Chưa có câu hỏi nào. Vui lòng thêm mới hoặc upload Excel.</td></tr>`;
+        return;
+      }
+
+      let html = "";
+      loadedQuestions.forEach((q, index) => {
+        let mediaBadge = q.image_url ? `<span class="badge bg-secondary ms-2"><i class="bi bi-paperclip"></i> Media</span>` : "";
+        let correctLetter = q.correct.toUpperCase();
+        let correctText = q[`opt_${correctLetter.toLowerCase()}`];
+        
+        let btnUp = index > 0 ? `<button class="btn btn-sm btn-outline-light me-1" onclick="moveQuestion(${index}, -1)" title="Lên" style="padding: 2px 6px; font-size:10px;">▲</button>` : '';
+        let btnDown = index < loadedQuestions.length - 1 ? `<button class="btn btn-sm btn-outline-light me-1" onclick="moveQuestion(${index}, 1)" title="Xuống" style="padding: 2px 6px; font-size:10px;">▼</button>` : '';
+
+        let actions = `
+          ${btnUp}${btnDown}
+          <button class="btn btn-sm btn-info me-1" onclick='openQuestionModal(${JSON.stringify(q).replace(/'/g, "&#39;")})'>Sửa</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteQuestion(${q.id})">Xóa</button>
+        `;
+        
+        html += `
+          <tr>
+            <td>${q.stt || ""}</td>
+            <td><strong>${q.question_text}</strong> ${mediaBadge}</td>
+            <td class="text-success fw-bold">${correctLetter}: ${correctText}</td>
+            <td class="text-center">${q.duration_sec}s</td>
+            <td class="text-center">${actions}</td>
+          </tr>
+        `;
+      });
+      tbody.innerHTML = html;
+    }
+
+    function moveQuestion(index, direction) {
+      if (!loadedQuestions || loadedQuestions.length === 0) return;
+      
+      const targetIndex = index + direction;
+      if (targetIndex < 0 || targetIndex >= loadedQuestions.length) return;
+      
+      // Swap elements locally for optimistic UI update
+      const temp = loadedQuestions[index];
+      loadedQuestions[index] = loadedQuestions[targetIndex];
+      loadedQuestions[targetIndex] = temp;
+      
+      // Update the visual table immediately
+      renderQuestionsTable();
+      
+      // Build the ID sequence map
+      const orderedIds = loadedQuestions.map(q => q.id);
+      
+      // Sync to the backend REST route
+      fetch(`/api/questions/${roomCode}/reorder`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ordered_ids: orderedIds })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.status === "success") {
+          fetchQuestions(); // Refresh authoritative data bounds (stt tags)
+        } else {
+          showToast("error", "Lỗi: " + data.message);
+          fetchQuestions(); // Revert on logic fail
+        }
+      })
+      .catch(err => {
+        console.error(err);
+        showToast("error", "Lỗi mạng khi cập nhật vị trí.");
+        fetchQuestions(); // Revert block structure
+      });
+    }
+
+    function openQuestionModal(q = null) {
+      document.getElementById("modalQuestion").style.display = "block";
+      document.getElementById("formQuestion").reset();
+      
+      if (q) {
+        document.getElementById("modalQuestionTitle").innerText = "Chỉnh sửa câu hỏi";
+        document.getElementById("q_id").value = q.id;
+        document.getElementById("q_stt").value = q.stt || "";
+        document.getElementById("q_text").value = q.question_text || "";
+        document.getElementById("q_duration").value = q.duration_sec || "20";
+        document.getElementById("q_image_url").value = q.image_url || "";
+        
+        if (q.correct) {
+          document.getElementById(`q_correct_${q.correct.toUpperCase()}`).checked = true;
+        }
+        document.getElementById("q_opt_a").value = q.opt_a || "";
+        document.getElementById("q_opt_b").value = q.opt_b || "";
+        document.getElementById("q_opt_c").value = q.opt_c || "";
+        document.getElementById("q_opt_d").value = q.opt_d || "";
+      } else {
+        document.getElementById("modalQuestionTitle").innerText = "Thêm câu hỏi mới";
+        document.getElementById("q_id").value = "";
+        document.getElementById("q_correct_A").checked = true;
+      }
+    }
+
+    function closeQuestionModal() {
+      document.getElementById("modalQuestion").style.display = "none";
+    }
+
+    async function saveQuestion(event) {
+      event.preventDefault();
+      if (!roomCode) {
+        showToast("error", "Vui lòng Nạp ROOM trước khi thêm câu hỏi.");
+        return;
+      }
+
+      const form = document.getElementById("formQuestion");
+      const formData = new FormData(form);
+      
+      const btn = document.getElementById("btnSaveQuestion");
+      btn.disabled = true;
+      btn.innerText = "Đang lưu...";
+
+      try {
+        const res = await fetch(`/api/questions/${roomCode}/save`, {
+          method: "POST",
+          body: formData
+        });
+        const result = await res.json();
+        if (result.status === "success") {
+           showToast("success", "Đã lưu câu hỏi thành công!");
+           closeQuestionModal();
+           fetchQuestions();
+        } else {
+           showToast("error", "Lỗi: " + result.message);
+        }
+      } catch (err) {
+        console.error("Save error:", err);
+        showToast("error", "Lỗi gửi dữ liệu. Kiểm tra mạng.");
+      }
+      
+      btn.disabled = false;
+      btn.innerHTML = `<i class="bi bi-save"></i> Lưu lại`;
+    }
+
+    async function deleteQuestion(id) {
+      if (!confirm("Bạn có chắc chắn muốn xóa câu hỏi này khỏi hệ thống?")) return;
+      
+      try {
+        const res = await fetch(`/api/questions/${roomCode}/delete`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: id })
+        });
+        const result = await res.json();
+        if (result.status === "success") {
+           showToast("success", "Đã xóa câu hỏi.");
+           fetchQuestions();
+        } else {
+           showToast("error", "Lỗi xóa: " + result.message);
+        }
+      } catch (err) {
+        console.error("Delete error", err);
+        showToast("error", "Lỗi kết nối khi xóa.");
+      }
+    }
+
+
+    const socket = io({ transports: ['websocket', 'polling'] });
+
+    socket.on("connect", () => {
+      try { if (roomCode) { socket.emit("control_join", { room_code: roomCode }); } } catch (e) { }
+    });
+
+    // -------------------------
+    // Utilities
+    // -------------------------
+    function upper(s) { return (s || "").toString().trim().toUpperCase(); }
+
+    function showToast(type, msg) {
+      const el = document.getElementById("toast");
+      if (!el) return;
+      const cls = (type === "error") ? "alert-danger"
+        : (type === "warn") ? "alert-warning"
+          : "alert-success";
+      el.innerHTML = `<div class="alert ${cls} py-2 mb-0">${msg}</div>`;
+      setTimeout(() => { el.innerHTML = ""; }, 4200);
+    }
+
+    function fmtPct(n) {
+      // 2 chữ số thập phân, hiển thị theo VN (dấu phẩy)
+      const x = Number(n || 0);
+      return x.toFixed(2).replace(".", ",") + "%";
+    }
+
+    function setRoomUI(code) {
+      const badge = document.getElementById("roomBadge");
+      const inline = document.getElementById("roomCodeInline");
+      const inline2 = document.getElementById("roomCodeInline2");
+      const inline3 = document.getElementById("roomCodeInline3");
+      if (badge) badge.textContent = code || "---";
+      if (inline) inline.textContent = code || "ROOM";
+      if (inline2) inline2.textContent = code || "ROOM";
+      if (inline3) inline3.textContent = code || "ROOM";
+
+      // dynamic URLs (open links)
+      const btnOpenPlayer = document.getElementById("btnOpenPlayerLink");
+      const btnOpenDisplay = document.getElementById("btnOpenDisplayGate");
+      const btnOpenMC = document.getElementById("btnOpenMCGate");
+      if (btnOpenPlayer) btnOpenPlayer.href = code ? ("/player_join?room=" + encodeURIComponent(code)) : "#";
+      if (btnOpenDisplay) btnOpenDisplay.href = code ? ("/display_gate?room=" + encodeURIComponent(code)) : "#";
+      if (btnOpenMC) btnOpenMC.href = code ? ("/mc_gate?room=" + encodeURIComponent(code)) : "#";
+
+      // dynamic URLs (forms)
+      const uploadForm = document.getElementById("uploadForm");
+      if (uploadForm) {
+        uploadForm.action = code ? ("/room/upload_questions/" + code) : "#";
+      }
+      const exportBtn = document.getElementById("btnExport");
+      if (exportBtn) {
+        exportBtn.href = code ? ("/room/export/" + code) : "#";
+      }
+      const resetForm = document.getElementById("resetForm");
+      if (resetForm) {
+        resetForm.action = code ? ("/room/reset/" + code) : "#";
+      }
+    }
+
+
+    function renderPlayers(players) {
+      const tb = document.getElementById("playerTableBody");
+      const pc = document.getElementById("playerCount");
+      const jc = document.getElementById("joinedCountInline");
+      const canDelete = (window.__room_status === "lobby"); // chỉ xóa trước khi bắt đầu
+
+      if (pc) pc.textContent = (players || []).length;
+      if (jc) jc.textContent = (players || []).length;
+
+      const colHeader = document.getElementById("colDeleteOrScore");
+      if (colHeader) {
+        colHeader.textContent = canDelete ? "Xóa người chơi" : "Điểm / Xóa";
+      }
+
+      tb.innerHTML = "";
+      if (!players || players.length === 0) {
+        tb.innerHTML = `<tr><td colspan="7" class="text-bright-hint">Chưa có người chơi.</td></tr>`;
+        return;
+      }
+
+      window.__player_score_cache = window.__player_score_cache || {};
+      const isRunning = (window.__room_status === "running");
+
+      // We know time is up if state.flags.time_up is true or the timer says "Hết giờ".
+      // Time up flags caching is sometimes not fast enough via control_state due to polling.
+      const mcTimerText = document.getElementById("mcTimer") ? document.getElementById("mcTimer").textContent : "";
+      const isTimeUp = (window.__room_time_up === true) || (mcTimerText === "Hết giờ");
+
+      // Prepare scores and sorting
+      players.forEach(p => {
+        if (!isRunning || isTimeUp) {
+          window.__player_score_cache[p.id] = p.score || 0;
+        } else {
+          if (window.__player_score_cache[p.id] !== undefined) {
+            p.score = window.__player_score_cache[p.id];
+          } else {
+            p.score = 0;
+          }
+        }
+      });
+
+      if (window.__room_status === "ended") {
+        players.sort((a, b) => (b.score || 0) - (a.score || 0));
+      }
+
+      players.forEach((p, idx) => {
+        const tr = document.createElement("tr");
+        const actionCell = canDelete
+          ? `<button class="btn btn-sm btn-danger btn-del-player" title="Xóa người chơi">X</button>`
+          : `<div class="d-flex align-items-center justify-content-center gap-2">
+               <b class="fs-6">${p.score || 0}</b>
+               <button class="btn btn-sm btn-danger btn-del-player" title="Xóa người chơi">X</button>
+             </div>`;
+
+        tr.innerHTML = `
+        <td>${idx + 1}</td>
+        <td>${p.name || ""}</td>
+        <td>${p.employee_code || ""}</td>
+        <td>${p.position || ""}</td>
+        <td>${p.unit || ""}</td>
+        <td class="small">${p.joined_at || ""}</td>
+        <td class="text-center">
+          ${actionCell}
+        </td>
+      `;
+        // bind delete
+        const btn = tr.querySelector(".btn-del-player");
+        if (btn) {
+          btn.addEventListener("click", () => {
+            if (!roomCode) return showToast("warn", "Chưa nạp ROOM.");
+
+            const nm = (p.name || "").toString().trim() || "(không tên)";
+            const ok = confirm(`Xóa người chơi "${nm}" khỏi phòng ${roomCode}?
+
+Người chơi sẽ bị đá khỏi màn hình và phải tham gia lại.`);
+            if (!ok) return;
+            socket.emit("control_delete_player", { room_code: roomCode, player_id: p.id });
+          });
+        }
+        tb.appendChild(tr);
+      });
+    }
+
+    function renderCurrentQuestion(q, roomStatus) {
+      const box = document.getElementById("currentQuestionBox");
+      if (!box) return;
+
+      if (roomStatus === "ended") {
+        box.innerHTML = `<div class="text-bright-hint fs-5">Bài thi đã kết thúc.</div>`;
+        return;
+      }
+
+      if (!q) {
+        box.innerHTML = `<div class="text-bright-hint">Chưa bắt đầu.</div>`;
+        return;
+      }
+
+      const dur = (q.duration_sec !== null && q.duration_sec !== undefined) ? q.duration_sec : "";
+      const durBadge = dur ? `<span class="badge bg-dark text-light border border-secondary ms-2">TG Excel: ${dur}s</span>` : "";
+
+      let tColor = "bg-primary";
+      let tText = "--";
+      if (roomStatus === "running") {
+        if (window.__room_time_up) {
+          tColor = "bg-danger";
+          tText = "Hết giờ";
+        } else {
+          tColor = "bg-primary";
+          // Do not override with -- if it is actively ticking, but this element will be updated by setInterval on next tick anyway (~100ms)
+        }
+      }
+
+      box.innerHTML = `
+      <div class="mb-2 d-flex align-items-center">
+        <b class="fs-5">${q.stt ? (q.stt + ". ") : ""}${q.question_text}</b>
+        ${durBadge}
+        <span id="mcTimer" class="badge ${tColor} fs-6 ms-auto px-3 py-2 border border-secondary">${tText}</span>
+      </div>
+      <div class="row g-2 mt-2">
+        <div class="col-12 col-md-6"><div class="p-2 rounded bg-black text-light border border-secondary d-flex justify-content-between align-items-center gap-2"><span class="flex-grow-1">A. ${q.opt_a}</span><span id="distA" class="badge bg-secondary border border-light-subtle">0 (0.00%)</span></div></div>
+        <div class="col-12 col-md-6"><div class="p-2 rounded bg-black text-light border border-secondary d-flex justify-content-between align-items-center gap-2"><span class="flex-grow-1">B. ${q.opt_b}</span><span id="distB" class="badge bg-secondary border border-light-subtle">0 (0.00%)</span></div></div>
+        <div class="col-12 col-md-6"><div class="p-2 rounded bg-black text-light border border-secondary d-flex justify-content-between align-items-center gap-2"><span class="flex-grow-1">C. ${q.opt_c}</span><span id="distC" class="badge bg-secondary border border-light-subtle">0 (0.00%)</span></div></div>
+        <div class="col-12 col-md-6"><div class="p-2 rounded bg-black text-light border border-secondary d-flex justify-content-between align-items-center gap-2"><span class="flex-grow-1">D. ${q.opt_d}</span><span id="distD" class="badge bg-secondary border border-light-subtle">0 (0.00%)</span></div></div>
+      </div>
+      <div class="mt-3">
+        <span class="badge bg-success">Đáp án đúng: ${q.correct}</span>
+      </div>
+    `;
+    }
+
+
+    function updateOptionDist(a, b, c, d) {
+      const fmt = (x) => {
+        const cnt = x?.count ?? 0;
+        const pct = (x?.pct ?? 0);
+        const pctTxt = (typeof pct === "number") ? pct.toFixed(2) : (pct?.toFixed ? pct.toFixed(2) : pct);
+        return `${cnt} (${pctTxt}%)`;
+      };
+      const elA = document.getElementById("distA");
+      const elB = document.getElementById("distB");
+      const elC = document.getElementById("distC");
+      const elD = document.getElementById("distD");
+      if (elA) elA.textContent = fmt(a);
+      if (elB) elB.textContent = fmt(b);
+      if (elC) elC.textContent = fmt(c);
+      if (elD) elD.textContent = fmt(d);
+    }
+
+    function renderStats(stats, optionStats, players) {
+      const box = document.getElementById("statsBox");
+      if (!box) return;
+
+      const players_total = (players && Array.isArray(players)) ? players.length : 0;
+
+      if (!stats && !optionStats) {
+        box.innerHTML = `<div class="text-bright-hint">Chưa có dữ liệu.</div>`;
+        return;
+      }
+
+      // ---- Normalize stats: support both V5 (old) and V8 (new backend) ----
+      const answered = (stats && (stats.answered ?? stats.answered_total)) ?? 0;
+      const correct = (stats && (stats.correct ?? stats.correct_total)) ?? 0;
+      const wrong = (stats && (stats.wrong ?? stats.wrong_total)) ?? 0;
+      const no_answer = (stats && (stats.no_answer ?? stats.no_answer_total)) ?? Math.max(0, players_total - answered);
+
+      // fastest display
+      let fastestText = "Chưa có";
+      if (stats) {
+        if (stats.fastest_correct) {
+          // old format
+          fastestText = `${stats.fastest_correct.name} (${stats.fastest_correct.unit}) - ${(stats.fastest_correct.elapsed_ms / 1000).toFixed(2)}s`;
+        } else if (stats.fastest_correct_name) {
+          // new format
+          const t = (stats.fastest_correct_elapsed_ms != null) ? ` - ${(stats.fastest_correct_elapsed_ms / 1000).toFixed(2)}s` : "";
+          fastestText = `${stats.fastest_correct_name}${t}`;
+        }
+      }
+
+      // ---- Option distribution (A/B/C/D) ----
+      const os = optionStats || {};
+      const a = os.A || { count: 0, pct: 0 };
+      const b = os.B || { count: 0, pct: 0 };
+      const c = os.C || { count: 0, pct: 0 };
+      const d = os.D || { count: 0, pct: 0 };
+      const answered2 = (os.answered != null) ? os.answered : answered;
+
+
+      // cập nhật phân bổ ngay cạnh phương án
+      updateOptionDist(a, b, c, d);
+      box.innerHTML = `
+      <div>Tổng người chơi: <b>${players_total}</b></div>
+      <div>Đã trả lời: <b>${answered}</b></div>
+      <div>Đúng: <b class="text-success">${correct}</b> | Sai: <b class="text-danger">${wrong}</b> | Không trả lời: <b class="text-warning">${no_answer}</b></div>
+      <div>Nhanh nhất (đúng): <b class="text-info">${fastestText}</b></div>
+
+      <hr class="border-secondary my-2"/>
+
+      <div class="text-bright-hint small">Phân bổ lựa chọn A/B/C/D:</div>
+        <div>A: <b>${a.count ?? 0}</b> <span class="text-bright-hint">(${(a.pct ?? 0).toFixed ? (a.pct ?? 0).toFixed(2) : (a.pct ?? 0)}%)</span></div>
+        <div>B: <b>${b.count ?? 0}</b> <span class="text-bright-hint">(${(b.pct ?? 0).toFixed ? (b.pct ?? 0).toFixed(2) : (b.pct ?? 0)}%)</span></div>
+        <div>C: <b>${c.count ?? 0}</b> <span class="text-bright-hint">(${(c.pct ?? 0).toFixed ? (c.pct ?? 0).toFixed(2) : (c.pct ?? 0)}%)</span></div>
+        <div>D: <b>${d.count ?? 0}</b> <span class="text-bright-hint">(${(d.pct ?? 0).toFixed ? (d.pct ?? 0).toFixed(2) : (d.pct ?? 0)}%)</span></div>
+      </div>
+    `;
+    }
+
+    function renderTop10(top10) {
+      const body = document.getElementById("top10Body");
+      if (!body) return;
+      body.innerHTML = "";
+      if (!top10 || top10.length === 0) {
+        body.innerHTML = `<tr><td colspan="4" class="text-bright-hint">Chưa có.</td></tr>`;
+        return;
+      }
+      top10.forEach((r, i) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${i + 1}</td><td>${r.name}</td><td>${r.unit}</td><td><b>${r.score}</b></td>`;
+        body.appendChild(tr);
+      });
+    }
+
+    function updateToggleButtons(room, is_locked) {
+      const btnPQ = document.getElementById("btnTogglePlayerQuestion");
+      const btnFinal = document.getElementById("btnToggleFinal");
+      const btnRN = document.getElementById("togglePlayerResultNotice");
+      const btnToggleLock = document.getElementById("btnToggleLock");
+
+      const showQ = (room && room.player_show_question == 1);
+      if (btnPQ) {
+        btnPQ.textContent = showQ ? "Player: HIỆN CÂU HỎI" : "Player: ẨN CÂU HỎI";
+        btnPQ.classList.toggle("btn-warning", showQ);
+        btnPQ.classList.toggle("btn-outline-warning", !showQ);
+      }
+
+      const btnAllowOutside = document.getElementById("btnToggleAllowOutside");
+      const allowOutsideOn = (room && room.allow_outside_allowlist == 1);
+      if (btnAllowOutside) {
+        window.__room_allow_outside_allowlist = allowOutsideOn;
+        btnAllowOutside.textContent = allowOutsideOn ? "ĐANG MỞ CHẶN DSDT: Ai cũng vào được" : "ĐANG CHẶN DSDT: Chỉ người trong form";
+        btnAllowOutside.classList.toggle("btn-success", allowOutsideOn);
+        btnAllowOutside.classList.toggle("btn-outline-info", !allowOutsideOn);
+        btnAllowOutside.classList.toggle("text-dark", allowOutsideOn);
+        btnAllowOutside.classList.toggle("text-info", !allowOutsideOn);
+        window.__room_allow_outside_allowlist = allowOutsideOn;
+      }
+      
+      const radHost = document.getElementById("modeHostPaced");
+      const radSelf = document.getElementById("modeSelfPaced");
+      if (radHost && radSelf) {
+        const mode = room ? (room.quiz_mode || "host_paced") : "host_paced";
+        window.__room_quiz_mode = mode;
+        if (mode === "self_paced") {
+          radSelf.checked = true;
+        } else {
+          radHost.checked = true;
+        }
+        
+        // Hide global flow controls if self_paced
+        const disabledInSelfPaced = [
+          document.getElementById("btnNext"),
+          document.getElementById("btnReveal"),
+          document.getElementById("btnHideAnswer"),
+          document.getElementById("btnShowStats"),
+          document.getElementById("btnHideStats")
+        ];
+        
+        disabledInSelfPaced.forEach(btn => {
+          if (btn) {
+            if (mode === "self_paced" && window.__room_status === "running") {
+               btn.disabled = true;
+               btn.style.pointerEvents = "none";
+            } else {
+               btn.disabled = false;
+               btn.style.pointerEvents = "auto";
+            }
+          }
+        });
+      }
+
+      const rnOn = (room && room.player_result_notice == 1);
+      if (btnRN) {
+        btnRN.textContent = rnOn ? "Player: BẬT THÔNG BÁO KẾT QUẢ" : "Player: TẮT THÔNG BÁO KẾT QUẢ";
+        btnRN.classList.toggle("btn-info", rnOn);
+        btnRN.classList.toggle("btn-outline-warning", !rnOn);
+        btnRN.classList.toggle("text-dark", rnOn);
+        btnRN.classList.toggle("text-white", !rnOn);
+      }
+
+      const finalOn = (room && room.final_display_on == 1);
+      if (btnFinal) {
+        btnFinal.textContent = finalOn ? "Display: HIỆN CHUNG CUỘC" : "Display: ẨN CHUNG CUỘC";
+        btnFinal.classList.toggle("btn-light", finalOn);
+        btnFinal.classList.toggle("btn-outline-light", !finalOn);
+      }
+
+      const isLocked = is_locked;
+      if (btnToggleLock) {
+        if (isLocked) {
+          btnToggleLock.textContent = "Mở phòng thi";
+          btnToggleLock.className = "btn btn-outline-warning btn-sm w-100 fw-bold border border-2";
+        } else {
+          btnToggleLock.textContent = "Khóa phòng thi";
+          btnToggleLock.className = "btn btn-warning text-dark btn-sm w-100 fw-bold";
+        }
+      }
+    }
+
+    // -------------------------
+    // Room load logic
+    // -------------------------
+    let roomCode = "";
+    bindRoomForms(roomCode);
+
+
+    // --- Fix 405: bind form actions to proper endpoints (avoid POST /control) ---
+    function bindRoomForms(rc) {
+      try {
+        const room = (rc || "").trim().toUpperCase();
+        if (!room) return;
+        const uploadForm = document.getElementById("uploadForm");
+        if (uploadForm) uploadForm.action = `/room/upload_questions/${room}`;
+        const resetForm = document.getElementById("resetForm");
+        if (resetForm) resetForm.action = `/room/reset/${room}`;
+        const btnExport = document.getElementById("btnExport");
+        if (btnExport) btnExport.href = `/room/export/${room}`;
+      } catch (e) { }
+    }
+
+
+    function loadRoom(code) {
+      roomCode = upper(code);
+      bindRoomForms(roomCode);
+      if (!roomCode) {
+        showToast("warn", "Chưa nhập ROOM.");
+        return;
+      }
+      localStorage.setItem("quiz_room_code", roomCode);
+      document.getElementById("roomInput").value = roomCode;
+      setRoomUI(roomCode);
+
+      socket.emit("control_join", { room_code: roomCode });
+      showToast("success", "Đã nạp ROOM: " + roomCode);
+    }
+
+    document.getElementById("btnLoadRoom")?.addEventListener("click", () => {
+      loadRoom(document.getElementById("roomInput").value);
+    });
+
+    // auto load from storage or injected new room
+    const serverNewRoom = window.SERVER_NEW_ROOM || "";
+
+    if (serverNewRoom) {
+      // Auto load the newly created room injected by the backend
+      loadRoom(serverNewRoom);
+    } else {
+      const saved = localStorage.getItem("quiz_room_code") || "";
+      if (saved) {
+        loadRoom(saved);
+      } else {
+        setRoomUI("");
+      }
+    }
+
+    // -------------------------
+    // Forms: set duration / display code
+    // (Tạm thời submit sẽ chỉ báo; phần server endpoints set duration/code sẽ được nối ở phần App.py tiếp theo nếu cần)
+    // -------------------------
+    document.getElementById("formSetDuration")?.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const d = Number(document.getElementById("durationInput").value || 20);
+      showToast("warn", "Đang dùng fallback duration trong DB (đã set khi tạo phòng). Nếu anh muốn chỉnh trực tiếp fallback, em sẽ nối endpoint ở phần chỉnh App.py sau.");
+    });
+
+    document.getElementById("formSetDisplayCode")?.addEventListener("submit", (e) => {
+      e.preventDefault();
+      showToast("warn", "Display code hiện lưu trong DB khi tạo phòng. Nếu anh muốn sửa code trực tiếp từ Control, em sẽ nối endpoint ở phần chỉnh App.py sau.");
+    });
+
+    // -------------------------
+    // Buttons: control actions
+    // -------------------------
+    document.getElementById("btnStart")?.addEventListener("click", () => {
+      if (!roomCode) return showToast("warn", "Chưa nạp ROOM.");
+      if (window.__room_status === "ended") {
+        if (!confirm("Bạn có chắc chắn muốn chơi lại không? Toàn bộ kết quả thi trong phiên thi cũ sẽ bị xóa để ghi nhận kết quả mới")) {
+          return;
+        }
+      }
+      socket.emit("control_start_quiz", { room_code: roomCode });
+    });
+
+    document.getElementById("btnNext")?.addEventListener("click", () => {
+      if (!roomCode) return showToast("warn", "Chưa nạp ROOM.");
+      socket.emit("control_next_question", { room_code: roomCode });
+    });
+
+    document.getElementById("btnEnd")?.addEventListener("click", () => {
+      if (!roomCode) return showToast("warn", "Chưa nạp ROOM.");
+      if (confirm("Kết thúc bài thi ngay lập tức?")) {
+        socket.emit("control_end_quiz", { room_code: roomCode });
+      }
+    });
+
+    document.getElementById("btnReveal")?.addEventListener("click", () => {
+      if (!roomCode) return showToast("warn", "Chưa nạp ROOM.");
+      socket.emit("control_reveal_answer", { room_code: roomCode });
+    });
+
+    document.getElementById("btnHideAnswer")?.addEventListener("click", () => {
+      if (!roomCode) return showToast("warn", "Chưa nạp ROOM.");
+      socket.emit("control_hide_answer", { room_code: roomCode });
+    });
+
+    document.getElementById("btnShowStats")?.addEventListener("click", () => {
+      if (!roomCode) return showToast("warn", "Chưa nạp ROOM.");
+      socket.emit("control_show_stats_on_display", { room_code: roomCode });
+    });
+
+    document.getElementById("btnHideStats")?.addEventListener("click", () => {
+      if (!roomCode) return showToast("warn", "Chưa nạp ROOM.");
+      socket.emit("control_hide_stats_on_display", { room_code: roomCode });
+    });
+
+    document.getElementById("btnShowQR")?.addEventListener("click", () => {
+      if (!roomCode) return showToast("warn", "Chưa nạp ROOM.");
+      socket.emit("control_show_qr_on_display", { room_code: roomCode });
+    });
+
+    document.getElementById("btnHideQR")?.addEventListener("click", () => {
+      if (!roomCode) return showToast("warn", "Chưa nạp ROOM.");
+      socket.emit("control_hide_qr_on_display", { room_code: roomCode });
+    });
+
+    document.getElementById("btnShowPlayerList")?.addEventListener("click", () => {
+      if (!roomCode) return showToast("warn", "Chưa nạp ROOM.");
+      socket.emit("control_show_player_list_on_display", { room_code: roomCode });
+    });
+
+    document.getElementById("btnHidePlayerList")?.addEventListener("click", () => {
+      if (!roomCode) return showToast("warn", "Chưa nạp ROOM.");
+      socket.emit("control_hide_player_list_on_display", { room_code: roomCode });
+    });
+
+    document.getElementById("btnShowNotJoined")?.addEventListener("click", () => {
+      if (!roomCode) return showToast("warn", "Chưa nạp ROOM.");
+      socket.emit("control_show_not_joined_on_display", { room_code: roomCode });
+    });
+
+    document.getElementById("btnHideNotJoined")?.addEventListener("click", () => {
+      if (!roomCode) return showToast("warn", "Chưa nạp ROOM.");
+      socket.emit("control_hide_not_joined_on_display", { room_code: roomCode });
+    });
+
+    function uploadAllowlist(input) {
+      if (!roomCode) { showToast("warn", "Chưa nạp ROOM."); return; }
+      if (!input.files || !input.files[0]) return;
+      const fd = new FormData();
+      fd.append("file", input.files[0]);
+      fetch(`/room/upload_allowlist/${encodeURIComponent(roomCode)}`, { method: "POST", body: fd })
+        .then(r => { if (r.redirected) window.location.href = r.url; else window.location.reload(); })
+        .catch(() => window.location.reload());
+    }
+
+    document.getElementById("clearAllowlistForm")?.addEventListener("submit", (e) => {
+      e.preventDefault();
+      if (!roomCode) { showToast("warn", "Chưa nạp ROOM."); return; }
+      if (!confirm("Xóa danh sách kiểm soát? Sau khi xóa, mọi người đều vào được.")) return;
+      fetch(`/room/clear_allowlist/${encodeURIComponent(roomCode)}`, { method: "POST" })
+        .then(r => { if (r.redirected) window.location.href = r.url; else window.location.reload(); })
+        .catch(() => window.location.reload());
+    });
+
+    socket.on("not_joined_updated", (payload) => {
+      const players = payload.players || [];
+      // Update the badge
+      const badge = document.getElementById("allowlistBadge");
+      if (badge) {
+        badge.textContent = players.length > 0 ? `${players.length} người chưa tham gia` : `Tất cả đã tham gia`;
+        badge.className = players.length > 0 ? "badge bg-danger" : "badge bg-success";
+      }
+    });
+
+    document.getElementById("btnToggleAllowOutside")?.addEventListener("click", () => {
+      if (!roomCode) return showToast("warn", "Chưa nạp ROOM.");
+      const cur = window.__room_allow_outside_allowlist ? true : false;
+      socket.emit("control_set_allow_outside_allowlist", { room_code: roomCode, enabled: !cur });
+    });
+
+    document.getElementById("modeHostPaced")?.addEventListener("change", (e) => {
+      if (!roomCode || !e.target.checked) return;
+      socket.emit("control_set_quiz_mode", { room_code: roomCode, mode: "host_paced" });
+    });
+    
+    document.getElementById("modeSelfPaced")?.addEventListener("change", (e) => {
+      if (!roomCode || !e.target.checked) return;
+      socket.emit("control_set_quiz_mode", { room_code: roomCode, mode: "self_paced" });
+    });
+
+    document.getElementById("btnTogglePlayerQuestion")?.addEventListener("click", () => {
+      if (!roomCode) return showToast("warn", "Chưa nạp ROOM.");
+      // toggle based on last known state
+      const cur = window.__room_player_show_question ? true : false;
+      socket.emit("control_set_player_show_question", { room_code: roomCode, enabled: !cur });
+    });
+
+    document.getElementById("btnToggleFinal")?.addEventListener("click", () => {
+      if (!roomCode) return showToast("warn", "Chưa nạp ROOM.");
+      const cur = window.__room_final_display_on ? true : false;
+      socket.emit("control_toggle_final_results_on_display", { room_code: roomCode, enabled: !cur });
+    });
+
+
+    document.getElementById("togglePlayerResultNotice")?.addEventListener("click", () => {
+      if (!roomCode) return showToast("warn", "Chưa nạp ROOM.");
+      const cur = window.__room_player_result_notice ? true : false;
+      socket.emit("control_set_player_result_notice", { room_code: roomCode, enabled: !cur });
+    });
+
+    // -------------------------
+    // Socket listeners
+    // -------------------------
+    socket.on("toast", (t) => {
+      showToast(t.type || "success", t.msg || "");
+    });
+
+    socket.on("player_list_updated", (payload) => {
+      renderPlayers(payload.players || []);
+    });
+
+    // -------------------------
+    // Local Timer Logic for Control
+    // -------------------------
+    let mcTimerInterval = null;
+    let currentStartMs = null;
+    let currentDuration = null;
+
+    function stopMCTimer() {
+      if (mcTimerInterval) {
+        clearInterval(mcTimerInterval);
+        mcTimerInterval = null;
+      }
+      const tEl = document.getElementById("mcTimer");
+      if (tEl) {
+        tEl.textContent = "--";
+        tEl.classList.remove("bg-danger");
+        tEl.classList.add("bg-primary");
+      }
+    }
+
+    function startMCTimer(startMs, duration) {
+      currentStartMs = startMs;
+      currentDuration = duration;
+      const tEl = document.getElementById("mcTimer");
+      if (tEl) {
+        tEl.classList.remove("bg-danger");
+        tEl.classList.add("bg-primary");
+      }
+
+      if (mcTimerInterval) clearInterval(mcTimerInterval);
+
+      mcTimerInterval = setInterval(() => {
+        if (!currentStartMs) return;
+        const now = Date.now();
+        const elapsed = Math.max(0, now - currentStartMs);
+        const remain = Math.max(0, currentDuration * 1000 - elapsed);
+        const sec = Math.ceil(remain / 1000);
+
+        // ALWAYS fetch dynamically because renderCurrentQuestion rewrites DOM every state update!
+        const dynEl = document.getElementById("mcTimer");
+
+        if (dynEl) {
+          dynEl.textContent = sec.toString();
+        }
+
+        if (remain <= 0) {
+          clearInterval(mcTimerInterval);
+          if (dynEl) {
+            dynEl.textContent = "Hết giờ";
+            dynEl.classList.remove("bg-primary");
+            dynEl.classList.add("bg-danger");
+          }
+          // Also trigger a re-render of players to sync scores now that time is up
+          window.__room_time_up = true;
+          if (window.__last_players_state) {
+            renderPlayers(window.__last_players_state);
+          }
+        }
+      }, 120);
+    }
+
+    socket.on("question_started", (st) => {
+      if (!st) return;
+      startMCTimer(st.start_ms, st.duration);
+    });
+
+    socket.on("question_ended", (payload) => {
+      stopMCTimer();
+      if (payload && payload.stats) {
+        renderStats(payload.stats);
+        renderTop10(payload.top10);
+      }
+    });
+
+
+
+    socket.on("time_up", () => {
+      clearInterval(mcTimerInterval);
+      const el = document.getElementById("mcTimer");
+      if (el) {
+        el.textContent = "Hết giờ";
+        el.classList.remove("bg-primary");
+        el.classList.add("bg-danger");
+      }
+      // ensure we re-render players to sync scores right away
+      window.__room_time_up = true;
+      if (window.__last_players_state) {
+        renderPlayers(window.__last_players_state);
+      }
+    });
+
+    socket.on("control_state", (state) => {
+      if (!state) return;
+
+      // When loading state, if question is running, we might need to resume timer
+      if (state.room && state.room.status === "running" && state.current_question && !state.flags.time_up) {
+        if (!mcTimerInterval) {
+          startMCTimer(state.current_question.start_ms, state.current_question.duration_sec || 0);
+        }
+      } else {
+        stopMCTimer();
+      }
+
+      // room info
+      if (state.room) {
+        document.getElementById("roomStatus").textContent = state.room.status || "---";
+        window.__room_status = state.room.status || "";
+        document.getElementById("roomBadge").textContent = state.room.room_code || roomCode || "---";
+        document.getElementById("roomCodeInline").textContent = state.room.room_code || roomCode || "ROOM";
+        document.getElementById("qCount").textContent = state.question_count ?? 0;
+
+        // display gate code
+        const dcl = document.getElementById("displayCodeLabel");
+        if (dcl) {
+          const code = (state.room.display_code || state.room.displayCode || "").toString().trim();
+          dcl.textContent = code ? code : "(chưa rõ)";
+        }
+
+
+        // cache for toggles
+        window.__room_player_show_question = (state.room.player_show_question == 1);
+        window.__room_final_display_on = (state.room.final_display_on == 1);
+        window.__room_player_result_notice = (state.room.player_result_notice == 1);
+        window.__room_is_locked = state.is_locked; // Cache for lock state
+
+        updateToggleButtons(state.room, state.is_locked);
+      }
+
+      window.__last_players_state = state.players || [];
+      window.__room_time_up = state.flags ? state.flags.time_up : false;
+
+      renderPlayers(state.players || []);
+      renderCurrentQuestion(state.current_question, state.room?.status);
+      renderStats(state.stats, state.option_stats, state.players || []);
+      const doh = document.getElementById("displayOptsHint");
+      if (doh && typeof state.display_show_options !== "undefined") {
+        doh.textContent = "Phương án trên Display: " + (state.display_show_options ? "ĐANG HIỆN" : "ĐANG ẨN");
+        window.__room_display_show_options = state.display_show_options;
+
+        const btnOpts = document.getElementById("btnToggleOptsDisplay");
+        if (btnOpts) {
+          btnOpts.textContent = state.display_show_options ? "Display: HIỆN PHƯƠNG ÁN" : "Display: ẨN PHƯƠNG ÁN";
+          btnOpts.classList.toggle("btn-success", state.display_show_options);
+          btnOpts.classList.toggle("btn-outline-success", !state.display_show_options);
+        }
+      }
+      renderTop10(state.top10);
+
+      // MC Target toggle
+      window.__room_mc_show_correct_answer = state.mc_show_correct_answer !== false;
+      const btnTogMC = document.getElementById("btnToggleMCAnswer");
+      if (btnTogMC) {
+        if (window.__room_mc_show_correct_answer) {
+          btnTogMC.textContent = "MC: HIỆN ĐÁP ÁN ĐÚNG";
+          btnTogMC.className = "btn btn-success btn-sm w-100 fw-bold";
+        } else {
+          btnTogMC.textContent = "MC: ẨN ĐÁP ÁN ĐÚNG";
+          btnTogMC.className = "btn btn-outline-info btn-sm w-100 fw-bold border border-2 text-info";
+        }
+      }
+
+      // reveal enabled only after time_up
+      const revealBtn = document.getElementById("btnReveal");
+      if (revealBtn && state.flags) {
+        revealBtn.disabled = !state.flags.time_up;
+        window.__room_time_up = state.flags.time_up;
+      }
+
+      // disable start if already running
+      const st = state.room?.status;
+      const startBtn = document.getElementById("btnStart");
+      if (startBtn) {
+        startBtn.disabled = (st === "running");
+      }
+
+      // disable btnShowWinner khi bài thi đã kết thúc
+      const winBtn = document.getElementById("btnShowWinner");
+      if (winBtn) {
+        winBtn.disabled = (st === "ended");
+        winBtn.title = (st === "ended") ? "Bài thi đã kết thúc" : "";
+      }
+
+      // ensure toggle player q button is always clickable
+      const btnTogPlayerQ = document.getElementById("btnTogglePlayerQuestion");
+      if (btnTogPlayerQ) {
+        btnTogPlayerQ.disabled = false;
+      }
+    });
+
+    // V8.1: HIỆN/ẨN phương án trả lời trên Display
+    const btnToggleOptsDisplay = document.getElementById("btnToggleOptsDisplay");
+    if (btnToggleOptsDisplay) {
+      btnToggleOptsDisplay.addEventListener("click", () => {
+        if (!roomCode) { showToast("warn", "Chưa nạp ROOM."); return; }
+        const cur = window.__room_display_show_options ? true : false;
+        if (cur) {
+          socket.emit("control_hide_options_on_display", { room_code: roomCode });
+        } else {
+          socket.emit("control_show_options_on_display", { room_code: roomCode });
+        }
+      });
+    }
+
+    // WINNER TOGGLES
+    const btnShowWinner = document.getElementById("btnShowWinner");
+    if (btnShowWinner) {
+      btnShowWinner.addEventListener("click", () => {
+        if (!roomCode) return showToast("warn", "Chưa nạp ROOM.");
+        if (window.__room_status === "ended") return showToast("warn", "Bài thi đã kết thúc, không hiện được Chúc mừng.");
+        socket.emit("control_show_winner_on_display", { room_code: roomCode });
+      });
+    }
+
+    const btnHideWinner = document.getElementById("btnHideWinner");
+    if (btnHideWinner) {
+      btnHideWinner.addEventListener("click", () => {
+        if (!roomCode) return showToast("warn", "Chưa nạp ROOM.");
+        socket.emit("control_hide_winner_on_display", { room_code: roomCode });
+      });
+    }
+
+    // MC ANSWER TOGGLE
+    const btnToggleMCAnswer = document.getElementById("btnToggleMCAnswer");
+    if (btnToggleMCAnswer) {
+      btnToggleMCAnswer.addEventListener("click", () => {
+        if (!roomCode) return showToast("warn", "Chưa nạp ROOM.");
+        const cur = window.__room_mc_show_correct_answer ? true : false;
+        if (cur) {
+          socket.emit("control_mc_hide_answer", { room_code: roomCode });
+          showToast("success", "Đã ẨN đáp án đúng trên màn MC.");
+        } else {
+          socket.emit("control_mc_show_answer", { room_code: roomCode });
+          showToast("success", "Đã HIỆN đáp án đúng trên màn MC.");
+        }
+      });
+    }
+
+    const btnToggleLock = document.getElementById("btnToggleLock");
+    if (btnToggleLock) {
+      btnToggleLock.addEventListener("click", () => {
+        const rc = document.getElementById("roomInput")?.value?.trim()?.toUpperCase() || roomCode;
+        if (!rc) return showToast("warn", "Chưa nạp ROOM.");
+        socket.emit("control_toggle_lock", { room_code: rc });
+      });
+    }
+
+
+    bindRoomForms(roomCode);
+  </script>
+  {% include "_footer.html" %}
+
+</body>
+
+</html>
