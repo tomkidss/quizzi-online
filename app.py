@@ -2762,6 +2762,7 @@ def control_delete_player(data):
 # =========================
 # Main
 # =========================
+init_db()  # Ensure database is initialized even when imported by gunicorn
+
 if __name__ == "__main__":
-    init_db()
     socketio.run(app, host="0.0.0.0", port=5000, debug=True, allow_unsafe_werkzeug=True)
